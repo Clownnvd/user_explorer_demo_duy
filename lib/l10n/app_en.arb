@@ -1,0 +1,10 @@
+{
+  "@@locale": "en",
+  "appTitle": "GitHub User Explorer",
+  "usersTitle": "GitHub Users",
+  "retry": "Retry",
+  "searchHint": "Search GitHub username...",
+  "emptyState": "No users yet. Try searching.",
+  "errorState": "Something went wrong",
+  "details": "Details"
+}

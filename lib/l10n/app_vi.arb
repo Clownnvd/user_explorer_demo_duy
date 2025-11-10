@@ -1,0 +1,10 @@
+{
+  "@@locale": "vi",
+  "appTitle": "Khám phá người dùng GitHub",
+  "usersTitle": "Danh sách GitHub",
+  "retry": "Thử lại",
+  "searchHint": "Tìm username GitHub...",
+  "emptyState": "Chưa có dữ liệu. Hãy tìm thử.",
+  "errorState": "Có lỗi xảy ra",
+  "details": "Chi tiết"
+}
