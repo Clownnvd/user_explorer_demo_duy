@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:github_user_explorer/features/users/presentation/cubit/user_cubit.dart';
 import 'package:github_user_explorer/features/users/presentation/cubit/user_state.dart';
+import 'package:github_user_explorer/features/users/presentation/widgets/empty_state.dart';
+import 'package:github_user_explorer/features/users/presentation/widgets/error_state.dart';
+import 'package:github_user_explorer/features/users/presentation/widgets/loading_indicator.dart';
 import 'package:github_user_explorer/features/users/presentation/widgets/user_card.dart';
 import 'package:github_user_explorer/l10n/app_localizations.dart';
 
@@ -50,30 +53,24 @@ class _UserListPageState extends State<UserListPage> {
               builder: (context, state) {
                 switch (state) {
                   case UserInitial():
-                    return Center(child: Text(l10n.emptyState));
+                    return const EmptyStateWidget();
                   case UserLoading():
-                    return const Center(child: CircularProgressIndicator());
+                    return const LoadingIndicator();
                   case UserLoaded(:final users):
                     return ListView.builder(
                       itemCount: users.length,
                       itemBuilder: (context, index) =>
                           UserCard(user: users[index]),
                     );
+                  // Phần BlocBuilder sửa lại
                   case UserError(:final message):
                     return Center(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(l10n.errorState),
-                          Text(message,
-                              style: Theme.of(context).textTheme.bodySmall),
-                          const SizedBox(height: 8),
-                          ElevatedButton(
-                            onPressed: () =>
-                                context.read<UserCubit>().fetchUsers(),
-                            child: Text(l10n.retry),
-                          )
-                        ],
+                      child: ErrorMessageWidget(
+                        errorText: l10n.errorState,
+                        details: message,
+                        onRetry: () => context.read<UserCubit>().fetchUsers(),
+                        retryText: l10n.retry,
+                        textStyle: Theme.of(context).textTheme.bodySmall,
                       ),
                     );
                 }

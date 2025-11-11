@@ -1,0 +1,830 @@
+===== C:\Works\github_user_explorer_demo\lib\app.dart =====
+import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:github_user_explorer/core/di/injection.dart';
+import 'package:github_user_explorer/core/utils/app_config.dart';
+import 'package:github_user_explorer/features/users/domain/usecases/get_users.dart';
+import 'package:github_user_explorer/features/users/presentation/cubit/user_cubit.dart';
+import 'package:github_user_explorer/features/users/presentation/pages/user_list_page.dart';
+import 'package:github_user_explorer/l10n/app_localizations.dart';
+
+class MyApp extends StatelessWidget {
+  const MyApp({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final config = AppConfig.of(context);
+    return MaterialApp(
+      title: 'GitHub User Explorer',
+      debugShowCheckedModeBanner: false,
+      theme: config.theme,
+      localizationsDelegates: const [
+        AppLocalizations.delegate,
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
+      supportedLocales: AppLocalizations.supportedLocales,
+      home: BlocProvider(
+        create: (_) => UserCubit(getIt<GetUsers>()),
+        child: const UserListPage(),
+      ),
+    );
+  }
+}
+
+\n
+===== C:\Works\github_user_explorer_demo\lib\main.dart =====
+import 'package:flutter/material.dart';
+import 'package:github_user_explorer/app.dart';
+import 'package:github_user_explorer/core/di/injection.dart';
+import 'package:github_user_explorer/core/utils/app_config.dart';
+
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  const flavor = String.fromEnvironment('FLAVOR', defaultValue: 'DEV');
+  final baseUrl = 'https://api.github.com';
+
+  final theme = switch (flavor) {
+    'PROD' => ThemeData.dark(useMaterial3: true)
+        .copyWith(colorScheme: ColorScheme.fromSeed(seedColor: Colors.orange)),
+    _ => ThemeData.light(useMaterial3: true)
+        .copyWith(colorScheme: ColorScheme.fromSeed(seedColor: Colors.indigo)),
+  };
+
+  final config = AppConfig(
+    baseUrl: baseUrl,
+    flavor: flavor,
+    theme: theme,
+    // Bật mock để không cần internet
+    useMockRepo: false,
+    child: const MyApp(),
+  );
+
+  await setupDependencies(config);
+
+  runApp(config);
+}
+
+\n
+===== C:\Works\github_user_explorer_demo\lib\core\di\injection.dart =====
+// final sl = GetIt.instance;
+//
+// Future<void> initDependencies(String baseUrl) async {
+//   sl.registerLazySingleton<Dio>(() => Dio(BaseOptions(baseUrl: baseUrl)));
+//   sl.registerLazySingleton<AppHttpClient>(() => AppHttpClient(sl<Dio>()));
+//
+//   sl.registerLazySingleton<GithubUserRemoteDataSource>(
+//     () => GithubUserRemoteDataSourceImpl(sl<AppHttpClient>()),
+//   );
+//
+//   sl.registerLazySingleton<GithubUserRepository>(
+//     () => GithubUserRepositoryImpl(sl<GithubUserRemoteDataSource>()),
+//   );
+//
+//   sl.registerLazySingleton<GetUsers>(
+//       () => GetUsers(sl<GithubUserRepository>()));
+// }
+import 'package:dio/dio.dart';
+import 'package:get_it/get_it.dart';
+
+import '../../features/users/data/github_user_remote_data_source.dart';
+import '../../features/users/data/repositories/github_user_repository_impl.dart';
+import '../../features/users/data/repositories/github_user_repository_mock.dart';
+import '../../features/users/domain/repositories/github_user_repository.dart';
+import '../../features/users/domain/usecases/get_users.dart';
+import '../../features/users/presentation/cubit/user_cubit.dart';
+import '../network/app_http_client.dart';
+import '../utils/app_config.dart';
+
+final GetIt getIt = GetIt.instance;
+Future<void> setupDependencies(AppConfig config) async {
+  // 1. config
+  getIt.registerSingleton<AppConfig>(config);
+
+  // 2. Dio client (cấu hình baseUrl, timeout, interceptor logging)
+  final dio = Dio(
+    BaseOptions(
+      baseUrl: config.baseUrl,
+      connectTimeout: const Duration(seconds: 10),
+      receiveTimeout: const Duration(seconds: 10),
+    ),
+  )..interceptors.add(LogInterceptor(responseBody: true));
+
+  // 3. AppHttpClient
+  getIt.registerLazySingleton<AppHttpClient>(() => AppHttpClient(dio));
+
+  // 4. Remote data source
+  getIt.registerLazySingleton<GithubUserRemoteDataSource>(
+    () => GithubUserRemoteDataSourceImpl(getIt<AppHttpClient>()),
+  );
+
+  // 5. Repository (chuyển qua mock hoặc thật tùy config)
+  getIt.registerLazySingleton<GithubUserRepository>(
+    () => config.useMockRepo
+        ? GithubUserRepositoryMock()
+        : GithubUserRepositoryImpl(getIt<GithubUserRemoteDataSource>()),
+  );
+
+  // 6. Use case
+  getIt.registerLazySingleton<GetUsers>(
+    () => GetUsers(getIt<GithubUserRepository>()),
+  );
+
+  // 7. Cubit
+  getIt.registerFactory<UserCubit>(
+    () => UserCubit(getIt<GetUsers>()),
+  );
+}
+
+\n
+===== C:\Works\github_user_explorer_demo\lib\core\error\app_exception.dart =====
+class AppException implements Exception {
+  final String message;
+  AppException(this.message);
+  @override
+  String toString() => 'AppException: $message';
+}
+
+\n
+===== C:\Works\github_user_explorer_demo\lib\core\network\app_http_client.dart =====
+import 'package:dio/dio.dart';
+
+class AppHttpClient {
+  final Dio _dio;
+  AppHttpClient(this._dio) {
+    _dio.interceptors.add(LogInterceptor(responseBody: true));
+  }
+
+  Future<Response<dynamic>> get(String path, {Map<String, dynamic>? queryParameters}) {
+    return _dio.get(path, queryParameters: queryParameters);
+  }
+}
+
+\n
+===== C:\Works\github_user_explorer_demo\lib\core\utils\app_config.dart =====
+import 'package:flutter/material.dart';
+
+class AppConfig extends InheritedWidget {
+  final String baseUrl;
+  final String flavor;
+  final bool useMockRepo;
+  final ThemeData theme;
+
+  const AppConfig({
+    super.key,
+    required this.baseUrl,
+    required this.flavor,
+    this.useMockRepo = false,
+    required this.theme,
+    required super.child,
+  });
+
+  static AppConfig of(BuildContext context) {
+    final AppConfig? result =
+        context.dependOnInheritedWidgetOfExactType<AppConfig>();
+    assert(result != null, 'No AppConfig found in context');
+    return result!;
+  }
+
+  @override
+  bool updateShouldNotify(covariant AppConfig oldWidget) =>
+      baseUrl != oldWidget.baseUrl ||
+      flavor != oldWidget.flavor ||
+      theme != oldWidget.theme;
+}
+
+\n
+===== C:\Works\github_user_explorer_demo\lib\features\users\data\github_user_remote_data_source.dart =====
+import 'package:github_user_explorer/core/network/app_http_client.dart';
+import 'package:github_user_explorer/features/users/data/models/github_user_model.dart';
+
+abstract class GithubUserRemoteDataSource {
+  Future<List<GithubUserModel>> getUsers({String? query});
+}
+
+class GithubUserRemoteDataSourceImpl implements GithubUserRemoteDataSource {
+  final AppHttpClient client;
+  GithubUserRemoteDataSourceImpl(this.client);
+
+  @override
+  Future<List<GithubUserModel>> getUsers({String? query}) async {
+    // https://api.github.com/search/users?q=flutter
+    final res = await client.get(
+      '/search/users',
+      queryParameters:
+          (query != null && query.isNotEmpty) ? {'q': query} : {'q': 'flutter'},
+    );
+    final items = res.data['items'] as List<dynamic>;
+    return items.map((e) => GithubUserModel.fromJson(e)).toList();
+  }
+}
+
+\n
+===== C:\Works\github_user_explorer_demo\lib\features\users\data\models\github_user_model.dart =====
+import 'package:github_user_explorer/features/users/domain/entities/github_user.dart';
+import 'package:json_annotation/json_annotation.dart';
+
+part 'github_user_model.g.dart';
+
+@JsonSerializable()
+class GithubUserModel {
+  final int id;
+  final String login;
+
+  @JsonKey(name: 'avatar_url')
+  final String avatarUrl;
+
+  @JsonKey(name: 'html_url')
+  final String htmlUrl;
+
+  const GithubUserModel({
+    required this.id,
+    required this.login,
+    required this.avatarUrl,
+    required this.htmlUrl,
+  });
+
+  /// fromJson sẽ được sinh trong file .g.dart
+  factory GithubUserModel.fromJson(Map<String, dynamic> json) =>
+      _$GithubUserModelFromJson(json);
+
+  /// toJson cũng vậy
+  Map<String, dynamic> toJson() => _$GithubUserModelToJson(this);
+
+  /// tiện để mapping sang entity domain
+  GithubUser toEntity() => GithubUser(
+        id: id,
+        login: login,
+        avatarUrl: avatarUrl,
+        htmlUrl: htmlUrl,
+      );
+
+  /// nếu ở tầng trên bạn đã có entity mà muốn lưu xuống data
+  factory GithubUserModel.fromEntity(GithubUser user) => GithubUserModel(
+        id: user.id,
+        login: user.login,
+        avatarUrl: user.avatarUrl,
+        htmlUrl: user.htmlUrl,
+      );
+}
+
+\n
+===== C:\Works\github_user_explorer_demo\lib\features\users\data\models\github_user_model.g.dart =====
+// GENERATED CODE - DO NOT MODIFY BY HAND
+
+part of 'github_user_model.dart';
+
+// **************************************************************************
+// JsonSerializableGenerator
+// **************************************************************************
+
+GithubUserModel _$GithubUserModelFromJson(Map<String, dynamic> json) =>
+    GithubUserModel(
+      id: (json['id'] as num).toInt(),
+      login: json['login'] as String,
+      avatarUrl: json['avatar_url'] as String,
+      htmlUrl: json['html_url'] as String,
+    );
+
+Map<String, dynamic> _$GithubUserModelToJson(GithubUserModel instance) =>
+    <String, dynamic>{
+      'id': instance.id,
+      'login': instance.login,
+      'avatar_url': instance.avatarUrl,
+      'html_url': instance.htmlUrl,
+    };
+
+\n
+===== C:\Works\github_user_explorer_demo\lib\features\users\data\repositories\github_user_repository_impl.dart =====
+import 'package:github_user_explorer/features/users/data/github_user_remote_data_source.dart';
+import 'package:github_user_explorer/features/users/domain/entities/github_user.dart';
+import 'package:github_user_explorer/features/users/domain/repositories/github_user_repository.dart';
+
+import '../models/github_user_model.dart';
+
+class GithubUserRepositoryImpl implements GithubUserRepository {
+  final GithubUserRemoteDataSource _remote;
+  GithubUserRepositoryImpl(this._remote);
+
+  @override
+  Future<List<GithubUser>> getUsers({String? query}) async {
+    // Gọi remote datasource lấy về danh sách model
+    final List<GithubUserModel> models = await _remote.getUsers(query: query);
+
+    // Chuyển đổi model -> entity
+    final List<GithubUser> entities = models.map((m) => m.toEntity()).toList();
+
+    return entities;
+  }
+}
+
+\n
+===== C:\Works\github_user_explorer_demo\lib\features\users\data\repositories\github_user_repository_mock.dart =====
+import 'package:github_user_explorer/features/users/domain/entities/github_user.dart';
+import 'package:github_user_explorer/features/users/domain/repositories/github_user_repository.dart';
+
+/// Repo mock dùng khi emulator không gọi được https://api.github.com
+/// hoặc khi bạn dạy thực hành offline.
+class GithubUserRepositoryMock implements GithubUserRepository {
+  @override
+  Future<List<GithubUser>> getUsers({String? query}) async {
+    // giả lập network
+    await Future<void>.delayed(const Duration(milliseconds: 400));
+
+    final q = (query ?? '').toLowerCase();
+
+    final data = <GithubUser>[
+      GithubUser(
+        id: 1,
+        login: 'flutterdev',
+        avatarUrl: 'https://via.placeholder.com/150?text=flutter',
+        htmlUrl: 'https://github.com/flutter',
+      ),
+      GithubUser(
+        id: 2,
+        login: 'dart-lang',
+        avatarUrl: 'https://via.placeholder.com/150?text=dart',
+        htmlUrl: 'https://github.com/dart-lang',
+      ),
+      GithubUser(
+        id: 3,
+        login: 'your-company',
+        avatarUrl: 'https://via.placeholder.com/150?text=company',
+        htmlUrl: 'https://github.com/your-company',
+      ),
+    ];
+
+    // nếu có query thì lọc cho sinh động
+    if (q.isNotEmpty) {
+      return data.where((e) => e.login.toLowerCase().contains(q)).toList();
+    }
+
+    return data;
+  }
+}
+
+\n
+===== C:\Works\github_user_explorer_demo\lib\features\users\domain\entities\github_user.dart =====
+class GithubUser {
+  final int id;
+  final String login;
+  final String avatarUrl;
+  final String htmlUrl;
+
+  GithubUser({
+    required this.id,
+    required this.login,
+    required this.avatarUrl,
+    required this.htmlUrl,
+  });
+}
+
+\n
+===== C:\Works\github_user_explorer_demo\lib\features\users\domain\repositories\github_user_repository.dart =====
+import 'package:github_user_explorer/features/users/domain/entities/github_user.dart';
+
+abstract class GithubUserRepository {
+  Future<List<GithubUser>> getUsers({String? query});
+}
+
+\n
+===== C:\Works\github_user_explorer_demo\lib\features\users\domain\usecases\get_users.dart =====
+import 'package:github_user_explorer/features/users/domain/entities/github_user.dart';
+import 'package:github_user_explorer/features/users/domain/repositories/github_user_repository.dart';
+
+class GetUsers {
+  final GithubUserRepository _repo;
+  GetUsers(this._repo);
+
+  Future<List<GithubUser>> call({String? query}) => _repo.getUsers(query: query);
+}
+
+\n
+===== C:\Works\github_user_explorer_demo\lib\features\users\presentation\cubit\user_cubit.dart =====
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:github_user_explorer/features/users/domain/usecases/get_users.dart';
+import 'package:github_user_explorer/features/users/presentation/cubit/user_state.dart';
+
+class UserCubit extends Cubit<UserState> {
+  final GetUsers _getUsers;
+  UserCubit(this._getUsers) : super(UserInitial());
+
+  Future<void> fetchUsers({String? query}) async {
+    emit(UserLoading());
+    try {
+      final users = await _getUsers(query: query);
+      emit(UserLoaded(users));
+    } catch (e) {
+      emit(UserError(e.toString()));
+    }
+  }
+}
+
+\n
+===== C:\Works\github_user_explorer_demo\lib\features\users\presentation\cubit\user_state.dart =====
+import 'package:github_user_explorer/features/users/domain/entities/github_user.dart';
+
+sealed class UserState {}
+
+class UserInitial extends UserState {}
+
+class UserLoading extends UserState {}
+
+class UserLoaded extends UserState {
+  final List<GithubUser> users;
+  UserLoaded(this.users);
+}
+
+class UserError extends UserState {
+  final String message;
+  UserError(this.message);
+}
+
+\n
+===== C:\Works\github_user_explorer_demo\lib\features\users\presentation\pages\user_list_page.dart =====
+import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:github_user_explorer/features/users/presentation/cubit/user_cubit.dart';
+import 'package:github_user_explorer/features/users/presentation/cubit/user_state.dart';
+import 'package:github_user_explorer/features/users/presentation/widgets/user_card.dart';
+import 'package:github_user_explorer/l10n/app_localizations.dart';
+
+class UserListPage extends StatefulWidget {
+  const UserListPage({super.key});
+
+  @override
+  State<UserListPage> createState() => _UserListPageState();
+}
+
+class _UserListPageState extends State<UserListPage> {
+  final _controller = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    context.read<UserCubit>().fetchUsers();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    return Scaffold(
+      appBar: AppBar(title: Text(l10n!.usersTitle)),
+      body: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(8.0),
+            child: TextField(
+              controller: _controller,
+              decoration: InputDecoration(
+                hintText: l10n.searchHint,
+                suffixIcon: IconButton(
+                  icon: const Icon(Icons.search),
+                  onPressed: () => context
+                      .read<UserCubit>()
+                      .fetchUsers(query: _controller.text),
+                ),
+              ),
+              onSubmitted: (v) =>
+                  context.read<UserCubit>().fetchUsers(query: v),
+            ),
+          ),
+          Expanded(
+            child: BlocBuilder<UserCubit, UserState>(
+              builder: (context, state) {
+                switch (state) {
+                  case UserInitial():
+                    return Center(child: Text(l10n.emptyState));
+                  case UserLoading():
+                    return const Center(child: CircularProgressIndicator());
+                  case UserLoaded(:final users):
+                    return ListView.builder(
+                      itemCount: users.length,
+                      itemBuilder: (context, index) =>
+                          UserCard(user: users[index]),
+                    );
+                  case UserError(:final message):
+                    return Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(l10n.errorState),
+                          Text(message,
+                              style: Theme.of(context).textTheme.bodySmall),
+                          const SizedBox(height: 8),
+                          ElevatedButton(
+                            onPressed: () =>
+                                context.read<UserCubit>().fetchUsers(),
+                            child: Text(l10n.retry),
+                          )
+                        ],
+                      ),
+                    );
+                }
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+\n
+===== C:\Works\github_user_explorer_demo\lib\features\users\presentation\widgets\user_card.dart =====
+import 'package:flutter/material.dart';
+import 'package:github_user_explorer/features/users/domain/entities/github_user.dart';
+
+class UserCard extends StatelessWidget {
+  final GithubUser user;
+  const UserCard({super.key, required this.user});
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: ListTile(
+        leading: CircleAvatar(backgroundImage: NetworkImage(user.avatarUrl)),
+        title: Text(user.login),
+        subtitle: Text(user.htmlUrl),
+        trailing: const Icon(Icons.chevron_right),
+      ),
+    );
+  }
+}
+
+\n
+===== C:\Works\github_user_explorer_demo\lib\l10n\app_en.arb =====
+{
+  "@@locale": "en",
+  "appTitle": "GitHub User Explorer",
+  "usersTitle": "GitHub Users",
+  "retry": "Retry",
+  "searchHint": "Search GitHub username...",
+  "emptyState": "No users yet. Try searching.",
+  "errorState": "Something went wrong",
+  "details": "Details"
+}
+
+\n
+===== C:\Works\github_user_explorer_demo\lib\l10n\app_localizations.dart =====
+import 'dart:async';
+
+import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:intl/intl.dart' as intl;
+
+import 'app_localizations_en.dart';
+import 'app_localizations_vi.dart';
+
+// ignore_for_file: type=lint
+
+/// Callers can lookup localized strings with an instance of AppLocalizations
+/// returned by `AppLocalizations.of(context)`.
+///
+/// Applications need to include `AppLocalizations.delegate()` in their app's
+/// `localizationDelegates` list, and the locales they support in the app's
+/// `supportedLocales` list. For example:
+///
+/// ```dart
+/// import 'l10n/app_localizations.dart';
+///
+/// return MaterialApp(
+///   localizationsDelegates: AppLocalizations.localizationsDelegates,
+///   supportedLocales: AppLocalizations.supportedLocales,
+///   home: MyApplicationHome(),
+/// );
+/// ```
+///
+/// ## Update pubspec.yaml
+///
+/// Please make sure to update your pubspec.yaml to include the following
+/// packages:
+///
+/// ```yaml
+/// dependencies:
+///   # Internationalization support.
+///   flutter_localizations:
+///     sdk: flutter
+///   intl: any # Use the pinned version from flutter_localizations
+///
+///   # Rest of dependencies
+/// ```
+///
+/// ## iOS Applications
+///
+/// iOS applications define key application metadata, including supported
+/// locales, in an Info.plist file that is built into the application bundle.
+/// To configure the locales supported by your app, you’ll need to edit this
+/// file.
+///
+/// First, open your project’s ios/Runner.xcworkspace Xcode workspace file.
+/// Then, in the Project Navigator, open the Info.plist file under the Runner
+/// project’s Runner folder.
+///
+/// Next, select the Information Property List item, select Add Item from the
+/// Editor menu, then select Localizations from the pop-up menu.
+///
+/// Select and expand the newly-created Localizations item then, for each
+/// locale your application supports, add a new item and select the locale
+/// you wish to add from the pop-up menu in the Value field. This list should
+/// be consistent with the languages listed in the AppLocalizations.supportedLocales
+/// property.
+abstract class AppLocalizations {
+  AppLocalizations(String locale)
+      : localeName = intl.Intl.canonicalizedLocale(locale.toString());
+
+  final String localeName;
+
+  static AppLocalizations? of(BuildContext context) {
+    return Localizations.of<AppLocalizations>(context, AppLocalizations);
+  }
+
+  static const LocalizationsDelegate<AppLocalizations> delegate =
+      _AppLocalizationsDelegate();
+
+  /// A list of this localizations delegate along with the default localizations
+  /// delegates.
+  ///
+  /// Returns a list of localizations delegates containing this delegate along with
+  /// GlobalMaterialLocalizations.delegate, GlobalCupertinoLocalizations.delegate,
+  /// and GlobalWidgetsLocalizations.delegate.
+  ///
+  /// Additional delegates can be added by appending to this list in
+  /// MaterialApp. This list does not have to be used at all if a custom list
+  /// of delegates is preferred or required.
+  static const List<LocalizationsDelegate<dynamic>> localizationsDelegates =
+      <LocalizationsDelegate<dynamic>>[
+    delegate,
+    GlobalMaterialLocalizations.delegate,
+    GlobalCupertinoLocalizations.delegate,
+    GlobalWidgetsLocalizations.delegate,
+  ];
+
+  /// A list of this localizations delegate's supported locales.
+  static const List<Locale> supportedLocales = <Locale>[
+    Locale('en'),
+    Locale('vi')
+  ];
+
+  /// No description provided for @appTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'GitHub User Explorer'**
+  String get appTitle;
+
+  /// No description provided for @usersTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'GitHub Users'**
+  String get usersTitle;
+
+  /// No description provided for @retry.
+  ///
+  /// In en, this message translates to:
+  /// **'Retry'**
+  String get retry;
+
+  /// No description provided for @searchHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Search GitHub username...'**
+  String get searchHint;
+
+  /// No description provided for @emptyState.
+  ///
+  /// In en, this message translates to:
+  /// **'No users yet. Try searching.'**
+  String get emptyState;
+
+  /// No description provided for @errorState.
+  ///
+  /// In en, this message translates to:
+  /// **'Something went wrong'**
+  String get errorState;
+
+  /// No description provided for @details.
+  ///
+  /// In en, this message translates to:
+  /// **'Details'**
+  String get details;
+}
+
+class _AppLocalizationsDelegate
+    extends LocalizationsDelegate<AppLocalizations> {
+  const _AppLocalizationsDelegate();
+
+  @override
+  Future<AppLocalizations> load(Locale locale) {
+    return SynchronousFuture<AppLocalizations>(lookupAppLocalizations(locale));
+  }
+
+  @override
+  bool isSupported(Locale locale) =>
+      <String>['en', 'vi'].contains(locale.languageCode);
+
+  @override
+  bool shouldReload(_AppLocalizationsDelegate old) => false;
+}
+
+AppLocalizations lookupAppLocalizations(Locale locale) {
+  // Lookup logic when only language code is specified.
+  switch (locale.languageCode) {
+    case 'en':
+      return AppLocalizationsEn();
+    case 'vi':
+      return AppLocalizationsVi();
+  }
+
+  throw FlutterError(
+      'AppLocalizations.delegate failed to load unsupported locale "$locale". This is likely '
+      'an issue with the localizations generation tool. Please file an issue '
+      'on GitHub with a reproducible sample app and the gen-l10n configuration '
+      'that was used.');
+}
+
+\n
+===== C:\Works\github_user_explorer_demo\lib\l10n\app_localizations_en.dart =====
+// ignore: unused_import
+import 'package:intl/intl.dart' as intl;
+import 'app_localizations.dart';
+
+// ignore_for_file: type=lint
+
+/// The translations for English (`en`).
+class AppLocalizationsEn extends AppLocalizations {
+  AppLocalizationsEn([String locale = 'en']) : super(locale);
+
+  @override
+  String get appTitle => 'GitHub User Explorer';
+
+  @override
+  String get usersTitle => 'GitHub Users';
+
+  @override
+  String get retry => 'Retry';
+
+  @override
+  String get searchHint => 'Search GitHub username...';
+
+  @override
+  String get emptyState => 'No users yet. Try searching.';
+
+  @override
+  String get errorState => 'Something went wrong';
+
+  @override
+  String get details => 'Details';
+}
+
+\n
+===== C:\Works\github_user_explorer_demo\lib\l10n\app_localizations_vi.dart =====
+// ignore: unused_import
+import 'package:intl/intl.dart' as intl;
+import 'app_localizations.dart';
+
+// ignore_for_file: type=lint
+
+/// The translations for Vietnamese (`vi`).
+class AppLocalizationsVi extends AppLocalizations {
+  AppLocalizationsVi([String locale = 'vi']) : super(locale);
+
+  @override
+  String get appTitle => 'Khám phá người dùng GitHub';
+
+  @override
+  String get usersTitle => 'Danh sách GitHub';
+
+  @override
+  String get retry => 'Thử lại';
+
+  @override
+  String get searchHint => 'Tìm username GitHub...';
+
+  @override
+  String get emptyState => 'Chưa có dữ liệu. Hãy tìm thử.';
+
+  @override
+  String get errorState => 'Có lỗi xảy ra';
+
+  @override
+  String get details => 'Chi tiết';
+}
+
+\n
+===== C:\Works\github_user_explorer_demo\lib\l10n\app_vi.arb =====
+{
+  "@@locale": "vi",
+  "appTitle": "Khám phá người dùng GitHub",
+  "usersTitle": "Danh sách GitHub",
+  "retry": "Thử lại",
+  "searchHint": "Tìm username GitHub...",
+  "emptyState": "Chưa có dữ liệu. Hãy tìm thử.",
+  "errorState": "Có lỗi xảy ra",
+  "details": "Chi tiết"
+}
+
+\n
