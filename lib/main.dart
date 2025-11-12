@@ -16,6 +16,19 @@ Future<void> main() async {
         .copyWith(colorScheme: ColorScheme.fromSeed(seedColor: Colors.indigo)),
   };
 
+  //mở rộng thêm textTheme và buttonTheme để chuẩn hóa style
+  theme.copyWith(
+  textTheme: const TextTheme(
+    bodyMedium: TextStyle(fontSize: 16, fontFamily: 'Roboto'),
+  ),
+  elevatedButtonTheme: ElevatedButtonThemeData(
+    style: ElevatedButton.styleFrom(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+    ),
+  ),
+);
+
+
   final config = AppConfig(
     baseUrl: baseUrl,
     flavor: flavor,

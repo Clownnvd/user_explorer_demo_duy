@@ -2,10 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:github_user_explorer/features/users/presentation/cubit/user_cubit.dart';
 import 'package:github_user_explorer/features/users/presentation/cubit/user_state.dart';
-import 'package:github_user_explorer/features/users/presentation/widgets/empty_state.dart';
-import 'package:github_user_explorer/features/users/presentation/widgets/error_state.dart';
-import 'package:github_user_explorer/features/users/presentation/widgets/loading_indicator.dart';
-import 'package:github_user_explorer/features/users/presentation/widgets/user_card.dart';
+import 'package:github_user_explorer/features/users/presentation/widgets/EmptyState.dart';
+import 'package:github_user_explorer/features/users/presentation/widgets/ErrorState.dart';
+import 'package:github_user_explorer/features/users/presentation/widgets/LoadingIndicator.dart';
+import 'package:github_user_explorer/features/users/presentation/widgets/UserCard.dart';
 import 'package:github_user_explorer/l10n/app_localizations.dart';
 
 class UserListPage extends StatefulWidget {
@@ -57,11 +57,35 @@ class _UserListPageState extends State<UserListPage> {
                   case UserLoading():
                     return const LoadingIndicator();
                   case UserLoaded(:final users):
-                    return ListView.builder(
-                      itemCount: users.length,
-                      itemBuilder: (context, index) =>
-                          UserCard(user: users[index]),
-                    );
+                    return LayoutBuilder(
+                      builder: (context, constraints) {
+                        // nếu màn hình rộng hơn 600px => hiển thị dạng lưới
+                        final isWide = constraints.maxWidth > 600;
+
+                        if (isWide) {
+                          return GridView.builder(
+                            padding: const EdgeInsets.all(8),
+                            gridDelegate:
+                                const SliverGridDelegateWithFixedCrossAxisCount(
+                              crossAxisCount: 2,
+                              childAspectRatio: 3,
+                              crossAxisSpacing: 8,
+                              mainAxisSpacing: 8,
+                            ),
+                            itemCount: users.length,
+                            itemBuilder: (_, index) =>
+                                UserCard(user: users[index]),
+                          );
+                        } else {
+                          return ListView.builder(
+                            padding: const EdgeInsets.all(8),
+                            itemCount: users.length,
+                            itemBuilder: (_, index) =>
+                                UserCard(user: users[index]),
+                          );
+                        }
+                      },
+                    ); //responsive
                   // Phần BlocBuilder sửa lại
                   case UserError(:final message):
                     return Center(
