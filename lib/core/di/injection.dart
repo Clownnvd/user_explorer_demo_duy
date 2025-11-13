@@ -1,20 +1,3 @@
-// final sl = GetIt.instance;
-//
-// Future<void> initDependencies(String baseUrl) async {
-//   sl.registerLazySingleton<Dio>(() => Dio(BaseOptions(baseUrl: baseUrl)));
-//   sl.registerLazySingleton<AppHttpClient>(() => AppHttpClient(sl<Dio>()));
-//
-//   sl.registerLazySingleton<GithubUserRemoteDataSource>(
-//     () => GithubUserRemoteDataSourceImpl(sl<AppHttpClient>()),
-//   );
-//
-//   sl.registerLazySingleton<GithubUserRepository>(
-//     () => GithubUserRepositoryImpl(sl<GithubUserRemoteDataSource>()),
-//   );
-//
-//   sl.registerLazySingleton<GetUsers>(
-//       () => GetUsers(sl<GithubUserRepository>()));
-// }
 import 'package:dio/dio.dart';
 import 'package:get_it/get_it.dart';
 
@@ -28,11 +11,12 @@ import '../network/app_http_client.dart';
 import '../utils/app_config.dart';
 
 final GetIt getIt = GetIt.instance;
+
 Future<void> setupDependencies(AppConfig config) async {
-  // 1. config
+  // 1. Config
   getIt.registerSingleton<AppConfig>(config);
 
-  // 2. Dio client (cấu hình baseUrl, timeout, interceptor logging)
+  // 2. Dio client (baseUrl + timeout + logging)
   final dio = Dio(
     BaseOptions(
       baseUrl: config.baseUrl,
@@ -44,19 +28,19 @@ Future<void> setupDependencies(AppConfig config) async {
   // 3. AppHttpClient
   getIt.registerLazySingleton<AppHttpClient>(() => AppHttpClient(dio));
 
-  // 4. Remote data source
+  // 4. Remote DataSource
   getIt.registerLazySingleton<GithubUserRemoteDataSource>(
     () => GithubUserRemoteDataSourceImpl(getIt<AppHttpClient>()),
   );
 
-  // 5. Repository (chuyển qua mock hoặc thật tùy config)
+  // 5. Repository
   getIt.registerLazySingleton<GithubUserRepository>(
     () => config.useMockRepo
         ? GithubUserRepositoryMock()
         : GithubUserRepositoryImpl(getIt<GithubUserRemoteDataSource>()),
   );
 
-  // 6. Use case
+  // 6. UseCase
   getIt.registerLazySingleton<GetUsers>(
     () => GetUsers(getIt<GithubUserRepository>()),
   );

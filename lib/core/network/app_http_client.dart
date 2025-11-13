@@ -1,12 +1,22 @@
 import 'package:dio/dio.dart';
 
 class AppHttpClient {
-  final Dio _dio;
-  AppHttpClient(this._dio) {
-    _dio.interceptors.add(LogInterceptor(responseBody: true));
+  final Dio dio;
+
+  AppHttpClient(this.dio);
+
+  Future<Response> get(
+    String path, {
+    Map<String, dynamic>? queryParameters,
+  }) async {
+    return dio.get(path, queryParameters: queryParameters);
   }
 
-  Future<Response<dynamic>> get(String path, {Map<String, dynamic>? queryParameters}) {
-    return _dio.get(path, queryParameters: queryParameters);
+  Future<Response> post(
+    String path, {
+    dynamic data,
+    Map<String, dynamic>? queryParameters,
+  }) async {
+    return dio.post(path, data: data, queryParameters: queryParameters);
   }
 }

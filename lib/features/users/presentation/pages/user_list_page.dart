@@ -24,13 +24,23 @@ class _UserListPageState extends State<UserListPage> {
     context.read<UserCubit>().fetchUsers();
   }
 
+  void _onSearch() {
+    context.read<UserCubit>().fetchUsers(query: _controller.text);
+  }
+
+  void _onSubmit(String value) {
+    context.read<UserCubit>().fetchUsers(query: value);
+  }
+
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
+
     return Scaffold(
       appBar: AppBar(title: Text(l10n!.usersTitle)),
       body: Column(
         children: [
+          // SEARCH BAR
           Padding(
             padding: const EdgeInsets.all(8.0),
             child: TextField(
@@ -39,29 +49,28 @@ class _UserListPageState extends State<UserListPage> {
                 hintText: l10n.searchHint,
                 suffixIcon: IconButton(
                   icon: const Icon(Icons.search),
-                  onPressed: () => context
-                      .read<UserCubit>()
-                      .fetchUsers(query: _controller.text),
+                  onPressed: _onSearch,
                 ),
               ),
-              onSubmitted: (v) =>
-                  context.read<UserCubit>().fetchUsers(query: v),
+              onSubmitted: _onSubmit,
             ),
           ),
+
+          // STATE HANDLER
           Expanded(
             child: BlocBuilder<UserCubit, UserState>(
               builder: (context, state) {
-                switch (state) {
-                  case UserInitial():
-                    return const EmptyStateWidget();
-                  case UserLoading():
-                    return const LoadingIndicator();
-                  case UserLoaded(:final users):
+                return state.when(
+                  initial: () => const EmptyStateWidget(),
+
+                  loading: () => const LoadingIndicator(),
+
+                  loaded: (users) {
                     return LayoutBuilder(
                       builder: (context, constraints) {
-                        // nếu màn hình rộng hơn 600px => hiển thị dạng lưới
                         final isWide = constraints.maxWidth > 600;
 
+                        // GRID UI FOR LARGE SCREEN
                         if (isWide) {
                           return GridView.builder(
                             padding: const EdgeInsets.all(8),
@@ -76,28 +85,30 @@ class _UserListPageState extends State<UserListPage> {
                             itemBuilder: (_, index) =>
                                 UserCard(user: users[index]),
                           );
-                        } else {
-                          return ListView.builder(
-                            padding: const EdgeInsets.all(8),
-                            itemCount: users.length,
-                            itemBuilder: (_, index) =>
-                                UserCard(user: users[index]),
-                          );
                         }
+
+                        // LIST UI FOR MOBILE
+                        return ListView.builder(
+                          padding: const EdgeInsets.all(8),
+                          itemCount: users.length,
+                          itemBuilder: (_, index) =>
+                              UserCard(user: users[index]),
+                        );
                       },
-                    ); //responsive
-                  // Phần BlocBuilder sửa lại
-                  case UserError(:final message):
-                    return Center(
-                      child: ErrorMessageWidget(
-                        errorText: l10n.errorState,
-                        details: message,
-                        onRetry: () => context.read<UserCubit>().fetchUsers(),
-                        retryText: l10n.retry,
-                        textStyle: Theme.of(context).textTheme.bodySmall,
-                      ),
                     );
-                }
+                  },
+
+                  error: (message) => Center(
+                    child: ErrorMessageWidget(
+                      errorText: l10n.errorState,
+                      details: message,
+                      onRetry: () =>
+                          context.read<UserCubit>().fetchUsers(),
+                      retryText: l10n.retry,
+                      textStyle: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ),
+                );
               },
             ),
           ),
