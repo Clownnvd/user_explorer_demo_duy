@@ -1,22 +1,30 @@
 import 'package:dio/dio.dart';
-import 'package:github_user_explorer/core/network/base_response.dart';
+import 'package:github_user_explorer/core/errors/app_exception.dart';
+import 'base_response.dart';
+import 'error_mapper.dart';
 
-abstract class BaseRepository {
+class BaseRepository {
   final Dio dio;
 
   BaseRepository(this.dio);
 
   Future<BaseResponse<T>> safeApiCall<T>(
-    Future<Response<dynamic>> Function() request,
-    T Function(dynamic data) mapper,
+    Future<dynamic> Function() call,
+    T Function(dynamic json) mapper,
   ) async {
     try {
-      final response = await request();
-      final mappedData = mapper(response.data);
+      final result = await call();
 
-      return BaseResponse<T>(data: mappedData);
-    } catch (e) {
-      return BaseResponse<T>(error: e.toString());
+      /// Nếu DataSource trả Response
+      if (result is Response) {
+        return BaseResponse<T>(data: mapper(result.data));
+      }
+
+      /// Nếu DataSource trả raw JSON
+      return BaseResponse<T>(data: mapper(result));
+    } catch (error) {
+      final msg = ErrorMapper.toMessage(error);
+      return BaseResponse<T>(error: msg);
     }
   }
 }

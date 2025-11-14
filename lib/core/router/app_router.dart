@@ -5,21 +5,16 @@ import 'package:github_user_explorer/features/users/presentation/pages/user_deta
 
 final appRouter = GoRouter(
   routes: [
-    /// Home Page
     GoRoute(
       path: '/',
-      name: 'home',
       builder: (context, state) => const UserListPage(),
     ),
-
-    /// User detail page: /detail/123?login=abc&avatar=url
     GoRoute(
       path: '/detail/:id',
-      name: 'detail',
       builder: (context, state) {
         final id = state.pathParameters['id']!;
-        final login = state.uri.queryParameters['login'] ?? '';
-        final avatar = state.uri.queryParameters['avatar'] ?? '';
+        final login = state.uri.queryParameters['login']!;
+        final avatar = state.uri.queryParameters['avatar']!;
 
         return UserDetailPage(
           id: id,

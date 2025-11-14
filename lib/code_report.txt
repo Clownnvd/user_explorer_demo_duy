@@ -3,10 +3,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:github_user_explorer/core/di/injection.dart';
+import 'package:github_user_explorer/core/router/app_router.dart';
+import 'package:github_user_explorer/core/theme/app_theme.dart';
 import 'package:github_user_explorer/core/utils/app_config.dart';
 import 'package:github_user_explorer/features/users/domain/usecases/get_users.dart';
 import 'package:github_user_explorer/features/users/presentation/cubit/user_cubit.dart';
-import 'package:github_user_explorer/features/users/presentation/pages/user_list_page.dart';
 import 'package:github_user_explorer/l10n/app_localizations.dart';
 
 class MyApp extends StatelessWidget {
@@ -15,20 +16,27 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final config = AppConfig.of(context);
-    return MaterialApp(
-      title: 'GitHub User Explorer',
-      debugShowCheckedModeBanner: false,
-      theme: config.theme,
-      localizationsDelegates: const [
-        AppLocalizations.delegate,
-        GlobalMaterialLocalizations.delegate,
-        GlobalWidgetsLocalizations.delegate,
-        GlobalCupertinoLocalizations.delegate,
+
+    return MultiBlocProvider(
+      providers: [
+        BlocProvider(
+          create: (_) => UserCubit(getIt<GetUsers>()),
+        ),
       ],
-      supportedLocales: AppLocalizations.supportedLocales,
-      home: BlocProvider(
-        create: (_) => UserCubit(getIt<GetUsers>()),
-        child: const UserListPage(),
+      child: MaterialApp.router(
+        title: 'GitHub User Explorer',
+        debugShowCheckedModeBanner: false,
+        theme: AppTheme.light,
+        darkTheme: AppTheme.dark,
+        themeMode: ThemeMode.system,
+        routerConfig: appRouter,
+        localizationsDelegates: const [
+          AppLocalizations.delegate,
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
+        supportedLocales: AppLocalizations.supportedLocales,
       ),
     );
   }
@@ -54,6 +62,19 @@ Future<void> main() async {
         .copyWith(colorScheme: ColorScheme.fromSeed(seedColor: Colors.indigo)),
   };
 
+  //mở rộng thêm textTheme và buttonTheme để chuẩn hóa style
+  theme.copyWith(
+  textTheme: const TextTheme(
+    bodyMedium: TextStyle(fontSize: 16, fontFamily: 'Roboto'),
+  ),
+  elevatedButtonTheme: ElevatedButtonThemeData(
+    style: ElevatedButton.styleFrom(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+    ),
+  ),
+);
+
+
   final config = AppConfig(
     baseUrl: baseUrl,
     flavor: flavor,
@@ -70,23 +91,6 @@ Future<void> main() async {
 
 \n
 ===== C:\Works\github_user_explorer_demo\lib\core\di\injection.dart =====
-// final sl = GetIt.instance;
-//
-// Future<void> initDependencies(String baseUrl) async {
-//   sl.registerLazySingleton<Dio>(() => Dio(BaseOptions(baseUrl: baseUrl)));
-//   sl.registerLazySingleton<AppHttpClient>(() => AppHttpClient(sl<Dio>()));
-//
-//   sl.registerLazySingleton<GithubUserRemoteDataSource>(
-//     () => GithubUserRemoteDataSourceImpl(sl<AppHttpClient>()),
-//   );
-//
-//   sl.registerLazySingleton<GithubUserRepository>(
-//     () => GithubUserRepositoryImpl(sl<GithubUserRemoteDataSource>()),
-//   );
-//
-//   sl.registerLazySingleton<GetUsers>(
-//       () => GetUsers(sl<GithubUserRepository>()));
-// }
 import 'package:dio/dio.dart';
 import 'package:get_it/get_it.dart';
 
@@ -100,11 +104,12 @@ import '../network/app_http_client.dart';
 import '../utils/app_config.dart';
 
 final GetIt getIt = GetIt.instance;
+
 Future<void> setupDependencies(AppConfig config) async {
-  // 1. config
+  // 1. Config
   getIt.registerSingleton<AppConfig>(config);
 
-  // 2. Dio client (cấu hình baseUrl, timeout, interceptor logging)
+  // 2. Dio client (baseUrl + timeout + logging)
   final dio = Dio(
     BaseOptions(
       baseUrl: config.baseUrl,
@@ -116,19 +121,19 @@ Future<void> setupDependencies(AppConfig config) async {
   // 3. AppHttpClient
   getIt.registerLazySingleton<AppHttpClient>(() => AppHttpClient(dio));
 
-  // 4. Remote data source
+  // 4. Remote DataSource
   getIt.registerLazySingleton<GithubUserRemoteDataSource>(
     () => GithubUserRemoteDataSourceImpl(getIt<AppHttpClient>()),
   );
 
-  // 5. Repository (chuyển qua mock hoặc thật tùy config)
+  // 5. Repository
   getIt.registerLazySingleton<GithubUserRepository>(
     () => config.useMockRepo
         ? GithubUserRepositoryMock()
         : GithubUserRepositoryImpl(getIt<GithubUserRemoteDataSource>()),
   );
 
-  // 6. Use case
+  // 6. UseCase
   getIt.registerLazySingleton<GetUsers>(
     () => GetUsers(getIt<GithubUserRepository>()),
   );
@@ -149,18 +154,296 @@ class AppException implements Exception {
 }
 
 \n
+===== C:\Works\github_user_explorer_demo\lib\core\network\api_result.dart =====
+import 'package:dio/dio.dart';
+
+class AppHttpClient {
+  final Dio dio;
+
+  AppHttpClient(this.dio);
+
+  Future<Response> get(
+    String path, {
+    Map<String, dynamic>? queryParameters,
+  }) async {
+    try {
+      return await dio.get(
+        path,
+        queryParameters: queryParameters,
+      );
+    } on DioException catch (e) {
+      throw Exception(e.message);
+    }
+  }
+
+  Future<Response> post(
+    String path, {
+    dynamic data,
+    Map<String, dynamic>? queryParameters,
+  }) async {
+    try {
+      return await dio.post(
+        path,
+        data: data,
+        queryParameters: queryParameters,
+      );
+    } on DioException catch (e) {
+      throw Exception(e.message);
+    }
+  }
+}
+
+\n
 ===== C:\Works\github_user_explorer_demo\lib\core\network\app_http_client.dart =====
 import 'package:dio/dio.dart';
 
 class AppHttpClient {
-  final Dio _dio;
-  AppHttpClient(this._dio) {
-    _dio.interceptors.add(LogInterceptor(responseBody: true));
+  final Dio dio;
+
+  AppHttpClient(this.dio);
+
+  Future<Response> get(
+    String path, {
+    Map<String, dynamic>? queryParameters,
+  }) async {
+    return dio.get(path, queryParameters: queryParameters);
   }
 
-  Future<Response<dynamic>> get(String path, {Map<String, dynamic>? queryParameters}) {
-    return _dio.get(path, queryParameters: queryParameters);
+  Future<Response> post(
+    String path, {
+    dynamic data,
+    Map<String, dynamic>? queryParameters,
+  }) async {
+    return dio.post(path, data: data, queryParameters: queryParameters);
   }
+}
+
+\n
+===== C:\Works\github_user_explorer_demo\lib\core\network\app_interceptor.dart =====
+import 'dart:developer';
+import 'package:dio/dio.dart';
+
+class AppInterceptor extends Interceptor {
+  final Dio dio;
+
+  AppInterceptor(this.dio);
+
+  @override
+  void onRequest(RequestOptions options, RequestInterceptorHandler handler) {
+    log(
+      '-- REQUEST --\n'
+      'URL: ${options.uri}\n'
+      'Method: ${options.method}\n'
+      'Headers: ${options.headers}\n'
+      'Data: ${options.data}',
+      name: 'HTTP',
+    );
+
+    // Ví dụ: thêm token nếu có
+    // options.headers['Authorization'] = 'Bearer YOUR_TOKEN';
+
+    super.onRequest(options, handler);
+  }
+
+  @override
+  void onResponse(Response response, ResponseInterceptorHandler handler) {
+    log(
+      '-- RESPONSE --\n'
+      'URL: ${response.realUri}\n'
+      'Status: ${response.statusCode}\n'
+      'Data: ${response.data}',
+      name: 'HTTP',
+    );
+
+    super.onResponse(response, handler);
+  }
+
+  @override
+  void onError(DioException err, ErrorInterceptorHandler handler) async {
+    log(
+      '-- ERROR --\n'
+      'TYPE: ${err.type}\n'
+      'URL: ${err.requestOptions.uri}\n'
+      'Message: ${err.message}',
+      name: 'HTTP',
+    );
+
+    // Nếu lỗi 401 -> refresh token (giả lập)
+    if (err.response?.statusCode == 401) {
+      try {
+        log('Refreshing token...', name: 'HTTP');
+
+        // 🔥 TẠO TOKEN MỚI (ví dụ demo)
+        final newToken = await _fakeRefreshToken();
+
+        // Gắn lại token vào header
+        err.requestOptions.headers['Authorization'] = 'Bearer $newToken';
+
+        // Retry request với token mới
+        final retryResponse =
+            await dio.fetch(err.requestOptions);
+
+        return handler.resolve(retryResponse);
+      } catch (_) {
+        log('Token refresh failed', name: 'HTTP');
+      }
+    }
+
+    // Retry nếu lỗi timeout hoặc network (tối đa 1 lần)
+    if (err.type == DioExceptionType.connectionTimeout ||
+        err.type == DioExceptionType.receiveTimeout ||
+        err.type == DioExceptionType.sendTimeout) {
+      try {
+        log('Retrying request...', name: 'HTTP');
+        final retryResponse = await dio.fetch(err.requestOptions);
+        return handler.resolve(retryResponse);
+      } catch (_) {
+        log('Retry failed', name: 'HTTP');
+      }
+    }
+
+    return handler.next(err);
+  }
+
+  /// Fake refresh token (demo) — bạn có thể sửa lại tuỳ app của bạn
+  Future<String> _fakeRefreshToken() async {
+    await Future.delayed(const Duration(milliseconds: 500));
+    return 'NEW_TOKEN_ABC123';
+  }
+}
+
+\n
+===== C:\Works\github_user_explorer_demo\lib\core\network\base_repository.dart =====
+import 'package:dio/dio.dart';
+import 'base_response.dart';
+import 'error_mapper.dart';
+
+class BaseRepository {
+  final Dio dio;
+
+  BaseRepository(this.dio);
+
+  Future<BaseResponse<T>> safeApiCall<T>(
+    Future<dynamic> Function() call,
+    T Function(dynamic json) mapper,
+  ) async {
+    try {
+      final result = await call(); // Có thể là Response hoặc Map/List
+
+      // Nếu là Response<Dio>
+      if (result is Response) {
+        return BaseResponse<T>(data: mapper(result.data));
+      }
+
+      // Nếu DataSource trả `response.data` trực tiếp
+      return BaseResponse<T>(data: mapper(result));
+    } catch (error) {
+      final msg = ErrorMapper.toMessage(error);
+      return BaseResponse<T>(error: msg);
+    }
+  }
+}
+
+\n
+===== C:\Works\github_user_explorer_demo\lib\core\network\base_response.dart =====
+class BaseResponse<T> {
+  final T? data;
+  final String? error;
+
+  const BaseResponse({this.data, this.error});
+
+  bool get hasError => error != null && error!.isNotEmpty;
+}
+\n
+===== C:\Works\github_user_explorer_demo\lib\core\network\error_mapper.dart =====
+import 'package:dio/dio.dart';
+
+class ErrorMapper {
+  static String toMessage(dynamic error) {
+    if (error is DioException) {
+      switch (error.type) {
+        case DioExceptionType.connectionTimeout:
+        case DioExceptionType.sendTimeout:
+        case DioExceptionType.receiveTimeout:
+          return "Kết nối tới máy chủ quá hạn.";
+
+        case DioExceptionType.badResponse:
+          final status = error.response?.statusCode;
+          if (status == 401) return "Bạn không có quyền truy cập.";
+          if (status == 404) return "Không tìm thấy tài nguyên.";
+          if (status == 500) return "Lỗi máy chủ, vui lòng thử lại.";
+          return "Lỗi máy chủ ($status).";
+
+        case DioExceptionType.unknown:
+          return "Không có kết nối Internet.";
+
+        default:
+          return "Đã xảy ra lỗi không xác định.";
+      }
+    }
+
+    return error.toString();
+  }
+}
+  
+\n
+===== C:\Works\github_user_explorer_demo\lib\core\router\app_router.dart =====
+import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
+import 'package:github_user_explorer/features/users/presentation/pages/user_list_page.dart';
+import 'package:github_user_explorer/features/users/presentation/pages/user_detail_page.dart';
+
+final appRouter = GoRouter(
+  routes: [
+    /// Home Page
+    GoRoute(
+      path: '/',
+      name: 'home',
+      builder: (context, state) => const UserListPage(),
+    ),
+
+    /// User detail page: /detail/123?login=abc&avatar=url
+    GoRoute(
+      path: '/detail/:id',
+      name: 'detail',
+      builder: (context, state) {
+        final id = state.pathParameters['id']!;
+        final login = state.uri.queryParameters['login'] ?? '';
+        final avatar = state.uri.queryParameters['avatar'] ?? '';
+
+        return UserDetailPage(
+          id: id,
+          login: login,
+          avatarUrl: avatar,
+        );
+      },
+    ),
+  ],
+);
+
+\n
+===== C:\Works\github_user_explorer_demo\lib\core\theme\app_theme.dart =====
+import 'package:flutter/material.dart';
+
+class AppTheme {
+  static ThemeData get light => ThemeData(
+        brightness: Brightness.light,
+        primarySwatch: Colors.blue,
+        scaffoldBackgroundColor: Colors.white,
+        appBarTheme: const AppBarTheme(
+          backgroundColor: Colors.blue,
+          foregroundColor: Colors.white,
+        ),
+      );
+
+  static ThemeData get dark => ThemeData(
+        brightness: Brightness.dark,
+        scaffoldBackgroundColor: Colors.black,
+        appBarTheme: const AppBarTheme(
+          backgroundColor: Colors.black,
+          foregroundColor: Colors.white,
+        ),
+      );
 }
 
 \n
@@ -199,62 +482,53 @@ class AppConfig extends InheritedWidget {
 \n
 ===== C:\Works\github_user_explorer_demo\lib\features\users\data\github_user_remote_data_source.dart =====
 import 'package:github_user_explorer/core/network/app_http_client.dart';
-import 'package:github_user_explorer/features/users/data/models/github_user_model.dart';
+import 'package:dio/dio.dart';
 
 abstract class GithubUserRemoteDataSource {
-  Future<List<GithubUserModel>> getUsers({String? query});
+  AppHttpClient get client;
+
+  Future<Response> getUsers({String? query});
 }
 
 class GithubUserRemoteDataSourceImpl implements GithubUserRemoteDataSource {
+  @override
   final AppHttpClient client;
+
   GithubUserRemoteDataSourceImpl(this.client);
 
   @override
-  Future<List<GithubUserModel>> getUsers({String? query}) async {
-    // https://api.github.com/search/users?q=flutter
-    final res = await client.get(
+  Future<Response> getUsers({String? query}) {
+    return client.get(
       '/search/users',
-      queryParameters:
-          (query != null && query.isNotEmpty) ? {'q': query} : {'q': 'flutter'},
+      queryParameters: (query != null && query.isNotEmpty)
+          ? {'q': query}
+          : {'q': 'flutter'},
     );
-    final items = res.data['items'] as List<dynamic>;
-    return items.map((e) => GithubUserModel.fromJson(e)).toList();
   }
 }
 
 \n
 ===== C:\Works\github_user_explorer_demo\lib\features\users\data\models\github_user_model.dart =====
+import 'package:freezed_annotation/freezed_annotation.dart';
 import 'package:github_user_explorer/features/users/domain/entities/github_user.dart';
-import 'package:json_annotation/json_annotation.dart';
 
+part 'github_user_model.freezed.dart';
 part 'github_user_model.g.dart';
 
-@JsonSerializable()
-class GithubUserModel {
-  final int id;
-  final String login;
+@freezed
+class GithubUserModel with _$GithubUserModel {
+  const factory GithubUserModel({
+    required int id,
+    required String login,
+    @JsonKey(name: 'avatar_url') required String avatarUrl,
+    @JsonKey(name: 'html_url') required String htmlUrl,
+  }) = _GithubUserModel;
 
-  @JsonKey(name: 'avatar_url')
-  final String avatarUrl;
-
-  @JsonKey(name: 'html_url')
-  final String htmlUrl;
-
-  const GithubUserModel({
-    required this.id,
-    required this.login,
-    required this.avatarUrl,
-    required this.htmlUrl,
-  });
-
-  /// fromJson sẽ được sinh trong file .g.dart
   factory GithubUserModel.fromJson(Map<String, dynamic> json) =>
       _$GithubUserModelFromJson(json);
+}
 
-  /// toJson cũng vậy
-  Map<String, dynamic> toJson() => _$GithubUserModelToJson(this);
-
-  /// tiện để mapping sang entity domain
+extension GithubUserModelMapper on GithubUserModel {
   GithubUser toEntity() => GithubUser(
         id: id,
         login: login,
@@ -262,13 +536,253 @@ class GithubUserModel {
         htmlUrl: htmlUrl,
       );
 
-  /// nếu ở tầng trên bạn đã có entity mà muốn lưu xuống data
-  factory GithubUserModel.fromEntity(GithubUser user) => GithubUserModel(
+  static GithubUserModel fromEntity(GithubUser user) =>
+      GithubUserModel(
         id: user.id,
         login: user.login,
         avatarUrl: user.avatarUrl,
         htmlUrl: user.htmlUrl,
       );
+}
+
+\n
+===== C:\Works\github_user_explorer_demo\lib\features\users\data\models\github_user_model.freezed.dart =====
+// coverage:ignore-file
+// GENERATED CODE - DO NOT MODIFY BY HAND
+// ignore_for_file: type=lint
+// ignore_for_file: unused_element, deprecated_member_use, deprecated_member_use_from_same_package, use_function_type_syntax_for_parameters, unnecessary_const, avoid_init_to_null, invalid_override_different_default_values_named, prefer_expression_function_bodies, annotate_overrides, invalid_annotation_target, unnecessary_question_mark
+
+part of 'github_user_model.dart';
+
+// **************************************************************************
+// FreezedGenerator
+// **************************************************************************
+
+T _$identity<T>(T value) => value;
+
+final _privateConstructorUsedError = UnsupportedError(
+    'It seems like you constructed your class using `MyClass._()`. This constructor is only meant to be used by freezed and you are not supposed to need it nor use it.\nPlease check the documentation here for more information: https://github.com/rrousselGit/freezed#adding-getters-and-methods-to-our-models');
+
+GithubUserModel _$GithubUserModelFromJson(Map<String, dynamic> json) {
+  return _GithubUserModel.fromJson(json);
+}
+
+/// @nodoc
+mixin _$GithubUserModel {
+  int get id => throw _privateConstructorUsedError;
+  String get login => throw _privateConstructorUsedError;
+  @JsonKey(name: 'avatar_url')
+  String get avatarUrl => throw _privateConstructorUsedError;
+  @JsonKey(name: 'html_url')
+  String get htmlUrl => throw _privateConstructorUsedError;
+
+  /// Serializes this GithubUserModel to a JSON map.
+  Map<String, dynamic> toJson() => throw _privateConstructorUsedError;
+
+  /// Create a copy of GithubUserModel
+  /// with the given fields replaced by the non-null parameter values.
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  $GithubUserModelCopyWith<GithubUserModel> get copyWith =>
+      throw _privateConstructorUsedError;
+}
+
+/// @nodoc
+abstract class $GithubUserModelCopyWith<$Res> {
+  factory $GithubUserModelCopyWith(
+          GithubUserModel value, $Res Function(GithubUserModel) then) =
+      _$GithubUserModelCopyWithImpl<$Res, GithubUserModel>;
+  @useResult
+  $Res call(
+      {int id,
+      String login,
+      @JsonKey(name: 'avatar_url') String avatarUrl,
+      @JsonKey(name: 'html_url') String htmlUrl});
+}
+
+/// @nodoc
+class _$GithubUserModelCopyWithImpl<$Res, $Val extends GithubUserModel>
+    implements $GithubUserModelCopyWith<$Res> {
+  _$GithubUserModelCopyWithImpl(this._value, this._then);
+
+  // ignore: unused_field
+  final $Val _value;
+  // ignore: unused_field
+  final $Res Function($Val) _then;
+
+  /// Create a copy of GithubUserModel
+  /// with the given fields replaced by the non-null parameter values.
+  @pragma('vm:prefer-inline')
+  @override
+  $Res call({
+    Object? id = null,
+    Object? login = null,
+    Object? avatarUrl = null,
+    Object? htmlUrl = null,
+  }) {
+    return _then(_value.copyWith(
+      id: null == id
+          ? _value.id
+          : id // ignore: cast_nullable_to_non_nullable
+              as int,
+      login: null == login
+          ? _value.login
+          : login // ignore: cast_nullable_to_non_nullable
+              as String,
+      avatarUrl: null == avatarUrl
+          ? _value.avatarUrl
+          : avatarUrl // ignore: cast_nullable_to_non_nullable
+              as String,
+      htmlUrl: null == htmlUrl
+          ? _value.htmlUrl
+          : htmlUrl // ignore: cast_nullable_to_non_nullable
+              as String,
+    ) as $Val);
+  }
+}
+
+/// @nodoc
+abstract class _$$GithubUserModelImplCopyWith<$Res>
+    implements $GithubUserModelCopyWith<$Res> {
+  factory _$$GithubUserModelImplCopyWith(_$GithubUserModelImpl value,
+          $Res Function(_$GithubUserModelImpl) then) =
+      __$$GithubUserModelImplCopyWithImpl<$Res>;
+  @override
+  @useResult
+  $Res call(
+      {int id,
+      String login,
+      @JsonKey(name: 'avatar_url') String avatarUrl,
+      @JsonKey(name: 'html_url') String htmlUrl});
+}
+
+/// @nodoc
+class __$$GithubUserModelImplCopyWithImpl<$Res>
+    extends _$GithubUserModelCopyWithImpl<$Res, _$GithubUserModelImpl>
+    implements _$$GithubUserModelImplCopyWith<$Res> {
+  __$$GithubUserModelImplCopyWithImpl(
+      _$GithubUserModelImpl _value, $Res Function(_$GithubUserModelImpl) _then)
+      : super(_value, _then);
+
+  /// Create a copy of GithubUserModel
+  /// with the given fields replaced by the non-null parameter values.
+  @pragma('vm:prefer-inline')
+  @override
+  $Res call({
+    Object? id = null,
+    Object? login = null,
+    Object? avatarUrl = null,
+    Object? htmlUrl = null,
+  }) {
+    return _then(_$GithubUserModelImpl(
+      id: null == id
+          ? _value.id
+          : id // ignore: cast_nullable_to_non_nullable
+              as int,
+      login: null == login
+          ? _value.login
+          : login // ignore: cast_nullable_to_non_nullable
+              as String,
+      avatarUrl: null == avatarUrl
+          ? _value.avatarUrl
+          : avatarUrl // ignore: cast_nullable_to_non_nullable
+              as String,
+      htmlUrl: null == htmlUrl
+          ? _value.htmlUrl
+          : htmlUrl // ignore: cast_nullable_to_non_nullable
+              as String,
+    ));
+  }
+}
+
+/// @nodoc
+@JsonSerializable()
+class _$GithubUserModelImpl implements _GithubUserModel {
+  const _$GithubUserModelImpl(
+      {required this.id,
+      required this.login,
+      @JsonKey(name: 'avatar_url') required this.avatarUrl,
+      @JsonKey(name: 'html_url') required this.htmlUrl});
+
+  factory _$GithubUserModelImpl.fromJson(Map<String, dynamic> json) =>
+      _$$GithubUserModelImplFromJson(json);
+
+  @override
+  final int id;
+  @override
+  final String login;
+  @override
+  @JsonKey(name: 'avatar_url')
+  final String avatarUrl;
+  @override
+  @JsonKey(name: 'html_url')
+  final String htmlUrl;
+
+  @override
+  String toString() {
+    return 'GithubUserModel(id: $id, login: $login, avatarUrl: $avatarUrl, htmlUrl: $htmlUrl)';
+  }
+
+  @override
+  bool operator ==(Object other) {
+    return identical(this, other) ||
+        (other.runtimeType == runtimeType &&
+            other is _$GithubUserModelImpl &&
+            (identical(other.id, id) || other.id == id) &&
+            (identical(other.login, login) || other.login == login) &&
+            (identical(other.avatarUrl, avatarUrl) ||
+                other.avatarUrl == avatarUrl) &&
+            (identical(other.htmlUrl, htmlUrl) || other.htmlUrl == htmlUrl));
+  }
+
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  @override
+  int get hashCode => Object.hash(runtimeType, id, login, avatarUrl, htmlUrl);
+
+  /// Create a copy of GithubUserModel
+  /// with the given fields replaced by the non-null parameter values.
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  @override
+  @pragma('vm:prefer-inline')
+  _$$GithubUserModelImplCopyWith<_$GithubUserModelImpl> get copyWith =>
+      __$$GithubUserModelImplCopyWithImpl<_$GithubUserModelImpl>(
+          this, _$identity);
+
+  @override
+  Map<String, dynamic> toJson() {
+    return _$$GithubUserModelImplToJson(
+      this,
+    );
+  }
+}
+
+abstract class _GithubUserModel implements GithubUserModel {
+  const factory _GithubUserModel(
+          {required final int id,
+          required final String login,
+          @JsonKey(name: 'avatar_url') required final String avatarUrl,
+          @JsonKey(name: 'html_url') required final String htmlUrl}) =
+      _$GithubUserModelImpl;
+
+  factory _GithubUserModel.fromJson(Map<String, dynamic> json) =
+      _$GithubUserModelImpl.fromJson;
+
+  @override
+  int get id;
+  @override
+  String get login;
+  @override
+  @JsonKey(name: 'avatar_url')
+  String get avatarUrl;
+  @override
+  @JsonKey(name: 'html_url')
+  String get htmlUrl;
+
+  /// Create a copy of GithubUserModel
+  /// with the given fields replaced by the non-null parameter values.
+  @override
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  _$$GithubUserModelImplCopyWith<_$GithubUserModelImpl> get copyWith =>
+      throw _privateConstructorUsedError;
 }
 
 \n
@@ -281,15 +795,17 @@ part of 'github_user_model.dart';
 // JsonSerializableGenerator
 // **************************************************************************
 
-GithubUserModel _$GithubUserModelFromJson(Map<String, dynamic> json) =>
-    GithubUserModel(
+_$GithubUserModelImpl _$$GithubUserModelImplFromJson(
+        Map<String, dynamic> json) =>
+    _$GithubUserModelImpl(
       id: (json['id'] as num).toInt(),
       login: json['login'] as String,
       avatarUrl: json['avatar_url'] as String,
       htmlUrl: json['html_url'] as String,
     );
 
-Map<String, dynamic> _$GithubUserModelToJson(GithubUserModel instance) =>
+Map<String, dynamic> _$$GithubUserModelImplToJson(
+        _$GithubUserModelImpl instance) =>
     <String, dynamic>{
       'id': instance.id,
       'login': instance.login,
@@ -299,28 +815,36 @@ Map<String, dynamic> _$GithubUserModelToJson(GithubUserModel instance) =>
 
 \n
 ===== C:\Works\github_user_explorer_demo\lib\features\users\data\repositories\github_user_repository_impl.dart =====
+import 'package:github_user_explorer/core/network/base_repository.dart';
 import 'package:github_user_explorer/features/users/data/github_user_remote_data_source.dart';
+import 'package:github_user_explorer/features/users/data/models/github_user_model.dart';
 import 'package:github_user_explorer/features/users/domain/entities/github_user.dart';
 import 'package:github_user_explorer/features/users/domain/repositories/github_user_repository.dart';
 
-import '../models/github_user_model.dart';
-
-class GithubUserRepositoryImpl implements GithubUserRepository {
+class GithubUserRepositoryImpl extends BaseRepository
+    implements GithubUserRepository {
   final GithubUserRemoteDataSource _remote;
-  GithubUserRepositoryImpl(this._remote);
+
+  GithubUserRepositoryImpl(this._remote)
+      : super(_remote.client.dio);
 
   @override
   Future<List<GithubUser>> getUsers({String? query}) async {
-    // Gọi remote datasource lấy về danh sách model
-    final List<GithubUserModel> models = await _remote.getUsers(query: query);
+    final result = await safeApiCall<List<GithubUser>>(
+      () => _remote.getUsers(query: query), // ✔ gọi API trả Response
+      (data) {
+        final items = data['items'] as List<dynamic>;
+        return items
+            .map((e) => GithubUserModel.fromJson(e).toEntity())
+            .toList();
+      },
+    );
 
-    // Chuyển đổi model -> entity
-    final List<GithubUser> entities = models.map((m) => m.toEntity()).toList();
-
-    return entities;
+    if (result.hasError) throw Exception(result.error);
+    return result.data!;
   }
 }
-
+  
 \n
 ===== C:\Works\github_user_explorer_demo\lib\features\users\data\repositories\github_user_repository_mock.dart =====
 import 'package:github_user_explorer/features/users/domain/entities/github_user.dart';
@@ -410,37 +934,722 @@ import 'package:github_user_explorer/features/users/presentation/cubit/user_stat
 
 class UserCubit extends Cubit<UserState> {
   final GetUsers _getUsers;
-  UserCubit(this._getUsers) : super(UserInitial());
+
+  UserCubit(this._getUsers) : super(const UserState.initial());
 
   Future<void> fetchUsers({String? query}) async {
-    emit(UserLoading());
+    emit(const UserState.loading());
     try {
       final users = await _getUsers(query: query);
-      emit(UserLoaded(users));
+      emit(UserState.loaded(users));
     } catch (e) {
-      emit(UserError(e.toString()));
+      emit(UserState.error(e.toString()));
     }
   }
 }
 
 \n
 ===== C:\Works\github_user_explorer_demo\lib\features\users\presentation\cubit\user_state.dart =====
+import 'package:freezed_annotation/freezed_annotation.dart';
 import 'package:github_user_explorer/features/users/domain/entities/github_user.dart';
 
-sealed class UserState {}
+part 'user_state.freezed.dart';
 
-class UserInitial extends UserState {}
-
-class UserLoading extends UserState {}
-
-class UserLoaded extends UserState {
-  final List<GithubUser> users;
-  UserLoaded(this.users);
+@freezed
+class UserState with _$UserState {
+  const factory UserState.initial() = _Initial;
+  const factory UserState.loading() = _Loading;
+  const factory UserState.loaded(List<GithubUser> users) = _Loaded;
+  const factory UserState.error(String message) = _Error;
 }
 
-class UserError extends UserState {
+\n
+===== C:\Works\github_user_explorer_demo\lib\features\users\presentation\cubit\user_state.freezed.dart =====
+// coverage:ignore-file
+// GENERATED CODE - DO NOT MODIFY BY HAND
+// ignore_for_file: type=lint
+// ignore_for_file: unused_element, deprecated_member_use, deprecated_member_use_from_same_package, use_function_type_syntax_for_parameters, unnecessary_const, avoid_init_to_null, invalid_override_different_default_values_named, prefer_expression_function_bodies, annotate_overrides, invalid_annotation_target, unnecessary_question_mark
+
+part of 'user_state.dart';
+
+// **************************************************************************
+// FreezedGenerator
+// **************************************************************************
+
+T _$identity<T>(T value) => value;
+
+final _privateConstructorUsedError = UnsupportedError(
+    'It seems like you constructed your class using `MyClass._()`. This constructor is only meant to be used by freezed and you are not supposed to need it nor use it.\nPlease check the documentation here for more information: https://github.com/rrousselGit/freezed#adding-getters-and-methods-to-our-models');
+
+/// @nodoc
+mixin _$UserState {
+  @optionalTypeArgs
+  TResult when<TResult extends Object?>({
+    required TResult Function() initial,
+    required TResult Function() loading,
+    required TResult Function(List<GithubUser> users) loaded,
+    required TResult Function(String message) error,
+  }) =>
+      throw _privateConstructorUsedError;
+  @optionalTypeArgs
+  TResult? whenOrNull<TResult extends Object?>({
+    TResult? Function()? initial,
+    TResult? Function()? loading,
+    TResult? Function(List<GithubUser> users)? loaded,
+    TResult? Function(String message)? error,
+  }) =>
+      throw _privateConstructorUsedError;
+  @optionalTypeArgs
+  TResult maybeWhen<TResult extends Object?>({
+    TResult Function()? initial,
+    TResult Function()? loading,
+    TResult Function(List<GithubUser> users)? loaded,
+    TResult Function(String message)? error,
+    required TResult orElse(),
+  }) =>
+      throw _privateConstructorUsedError;
+  @optionalTypeArgs
+  TResult map<TResult extends Object?>({
+    required TResult Function(_Initial value) initial,
+    required TResult Function(_Loading value) loading,
+    required TResult Function(_Loaded value) loaded,
+    required TResult Function(_Error value) error,
+  }) =>
+      throw _privateConstructorUsedError;
+  @optionalTypeArgs
+  TResult? mapOrNull<TResult extends Object?>({
+    TResult? Function(_Initial value)? initial,
+    TResult? Function(_Loading value)? loading,
+    TResult? Function(_Loaded value)? loaded,
+    TResult? Function(_Error value)? error,
+  }) =>
+      throw _privateConstructorUsedError;
+  @optionalTypeArgs
+  TResult maybeMap<TResult extends Object?>({
+    TResult Function(_Initial value)? initial,
+    TResult Function(_Loading value)? loading,
+    TResult Function(_Loaded value)? loaded,
+    TResult Function(_Error value)? error,
+    required TResult orElse(),
+  }) =>
+      throw _privateConstructorUsedError;
+}
+
+/// @nodoc
+abstract class $UserStateCopyWith<$Res> {
+  factory $UserStateCopyWith(UserState value, $Res Function(UserState) then) =
+      _$UserStateCopyWithImpl<$Res, UserState>;
+}
+
+/// @nodoc
+class _$UserStateCopyWithImpl<$Res, $Val extends UserState>
+    implements $UserStateCopyWith<$Res> {
+  _$UserStateCopyWithImpl(this._value, this._then);
+
+  // ignore: unused_field
+  final $Val _value;
+  // ignore: unused_field
+  final $Res Function($Val) _then;
+
+  /// Create a copy of UserState
+  /// with the given fields replaced by the non-null parameter values.
+}
+
+/// @nodoc
+abstract class _$$InitialImplCopyWith<$Res> {
+  factory _$$InitialImplCopyWith(
+          _$InitialImpl value, $Res Function(_$InitialImpl) then) =
+      __$$InitialImplCopyWithImpl<$Res>;
+}
+
+/// @nodoc
+class __$$InitialImplCopyWithImpl<$Res>
+    extends _$UserStateCopyWithImpl<$Res, _$InitialImpl>
+    implements _$$InitialImplCopyWith<$Res> {
+  __$$InitialImplCopyWithImpl(
+      _$InitialImpl _value, $Res Function(_$InitialImpl) _then)
+      : super(_value, _then);
+
+  /// Create a copy of UserState
+  /// with the given fields replaced by the non-null parameter values.
+}
+
+/// @nodoc
+
+class _$InitialImpl implements _Initial {
+  const _$InitialImpl();
+
+  @override
+  String toString() {
+    return 'UserState.initial()';
+  }
+
+  @override
+  bool operator ==(Object other) {
+    return identical(this, other) ||
+        (other.runtimeType == runtimeType && other is _$InitialImpl);
+  }
+
+  @override
+  int get hashCode => runtimeType.hashCode;
+
+  @override
+  @optionalTypeArgs
+  TResult when<TResult extends Object?>({
+    required TResult Function() initial,
+    required TResult Function() loading,
+    required TResult Function(List<GithubUser> users) loaded,
+    required TResult Function(String message) error,
+  }) {
+    return initial();
+  }
+
+  @override
+  @optionalTypeArgs
+  TResult? whenOrNull<TResult extends Object?>({
+    TResult? Function()? initial,
+    TResult? Function()? loading,
+    TResult? Function(List<GithubUser> users)? loaded,
+    TResult? Function(String message)? error,
+  }) {
+    return initial?.call();
+  }
+
+  @override
+  @optionalTypeArgs
+  TResult maybeWhen<TResult extends Object?>({
+    TResult Function()? initial,
+    TResult Function()? loading,
+    TResult Function(List<GithubUser> users)? loaded,
+    TResult Function(String message)? error,
+    required TResult orElse(),
+  }) {
+    if (initial != null) {
+      return initial();
+    }
+    return orElse();
+  }
+
+  @override
+  @optionalTypeArgs
+  TResult map<TResult extends Object?>({
+    required TResult Function(_Initial value) initial,
+    required TResult Function(_Loading value) loading,
+    required TResult Function(_Loaded value) loaded,
+    required TResult Function(_Error value) error,
+  }) {
+    return initial(this);
+  }
+
+  @override
+  @optionalTypeArgs
+  TResult? mapOrNull<TResult extends Object?>({
+    TResult? Function(_Initial value)? initial,
+    TResult? Function(_Loading value)? loading,
+    TResult? Function(_Loaded value)? loaded,
+    TResult? Function(_Error value)? error,
+  }) {
+    return initial?.call(this);
+  }
+
+  @override
+  @optionalTypeArgs
+  TResult maybeMap<TResult extends Object?>({
+    TResult Function(_Initial value)? initial,
+    TResult Function(_Loading value)? loading,
+    TResult Function(_Loaded value)? loaded,
+    TResult Function(_Error value)? error,
+    required TResult orElse(),
+  }) {
+    if (initial != null) {
+      return initial(this);
+    }
+    return orElse();
+  }
+}
+
+abstract class _Initial implements UserState {
+  const factory _Initial() = _$InitialImpl;
+}
+
+/// @nodoc
+abstract class _$$LoadingImplCopyWith<$Res> {
+  factory _$$LoadingImplCopyWith(
+          _$LoadingImpl value, $Res Function(_$LoadingImpl) then) =
+      __$$LoadingImplCopyWithImpl<$Res>;
+}
+
+/// @nodoc
+class __$$LoadingImplCopyWithImpl<$Res>
+    extends _$UserStateCopyWithImpl<$Res, _$LoadingImpl>
+    implements _$$LoadingImplCopyWith<$Res> {
+  __$$LoadingImplCopyWithImpl(
+      _$LoadingImpl _value, $Res Function(_$LoadingImpl) _then)
+      : super(_value, _then);
+
+  /// Create a copy of UserState
+  /// with the given fields replaced by the non-null parameter values.
+}
+
+/// @nodoc
+
+class _$LoadingImpl implements _Loading {
+  const _$LoadingImpl();
+
+  @override
+  String toString() {
+    return 'UserState.loading()';
+  }
+
+  @override
+  bool operator ==(Object other) {
+    return identical(this, other) ||
+        (other.runtimeType == runtimeType && other is _$LoadingImpl);
+  }
+
+  @override
+  int get hashCode => runtimeType.hashCode;
+
+  @override
+  @optionalTypeArgs
+  TResult when<TResult extends Object?>({
+    required TResult Function() initial,
+    required TResult Function() loading,
+    required TResult Function(List<GithubUser> users) loaded,
+    required TResult Function(String message) error,
+  }) {
+    return loading();
+  }
+
+  @override
+  @optionalTypeArgs
+  TResult? whenOrNull<TResult extends Object?>({
+    TResult? Function()? initial,
+    TResult? Function()? loading,
+    TResult? Function(List<GithubUser> users)? loaded,
+    TResult? Function(String message)? error,
+  }) {
+    return loading?.call();
+  }
+
+  @override
+  @optionalTypeArgs
+  TResult maybeWhen<TResult extends Object?>({
+    TResult Function()? initial,
+    TResult Function()? loading,
+    TResult Function(List<GithubUser> users)? loaded,
+    TResult Function(String message)? error,
+    required TResult orElse(),
+  }) {
+    if (loading != null) {
+      return loading();
+    }
+    return orElse();
+  }
+
+  @override
+  @optionalTypeArgs
+  TResult map<TResult extends Object?>({
+    required TResult Function(_Initial value) initial,
+    required TResult Function(_Loading value) loading,
+    required TResult Function(_Loaded value) loaded,
+    required TResult Function(_Error value) error,
+  }) {
+    return loading(this);
+  }
+
+  @override
+  @optionalTypeArgs
+  TResult? mapOrNull<TResult extends Object?>({
+    TResult? Function(_Initial value)? initial,
+    TResult? Function(_Loading value)? loading,
+    TResult? Function(_Loaded value)? loaded,
+    TResult? Function(_Error value)? error,
+  }) {
+    return loading?.call(this);
+  }
+
+  @override
+  @optionalTypeArgs
+  TResult maybeMap<TResult extends Object?>({
+    TResult Function(_Initial value)? initial,
+    TResult Function(_Loading value)? loading,
+    TResult Function(_Loaded value)? loaded,
+    TResult Function(_Error value)? error,
+    required TResult orElse(),
+  }) {
+    if (loading != null) {
+      return loading(this);
+    }
+    return orElse();
+  }
+}
+
+abstract class _Loading implements UserState {
+  const factory _Loading() = _$LoadingImpl;
+}
+
+/// @nodoc
+abstract class _$$LoadedImplCopyWith<$Res> {
+  factory _$$LoadedImplCopyWith(
+          _$LoadedImpl value, $Res Function(_$LoadedImpl) then) =
+      __$$LoadedImplCopyWithImpl<$Res>;
+  @useResult
+  $Res call({List<GithubUser> users});
+}
+
+/// @nodoc
+class __$$LoadedImplCopyWithImpl<$Res>
+    extends _$UserStateCopyWithImpl<$Res, _$LoadedImpl>
+    implements _$$LoadedImplCopyWith<$Res> {
+  __$$LoadedImplCopyWithImpl(
+      _$LoadedImpl _value, $Res Function(_$LoadedImpl) _then)
+      : super(_value, _then);
+
+  /// Create a copy of UserState
+  /// with the given fields replaced by the non-null parameter values.
+  @pragma('vm:prefer-inline')
+  @override
+  $Res call({
+    Object? users = null,
+  }) {
+    return _then(_$LoadedImpl(
+      null == users
+          ? _value._users
+          : users // ignore: cast_nullable_to_non_nullable
+              as List<GithubUser>,
+    ));
+  }
+}
+
+/// @nodoc
+
+class _$LoadedImpl implements _Loaded {
+  const _$LoadedImpl(final List<GithubUser> users) : _users = users;
+
+  final List<GithubUser> _users;
+  @override
+  List<GithubUser> get users {
+    if (_users is EqualUnmodifiableListView) return _users;
+    // ignore: implicit_dynamic_type
+    return EqualUnmodifiableListView(_users);
+  }
+
+  @override
+  String toString() {
+    return 'UserState.loaded(users: $users)';
+  }
+
+  @override
+  bool operator ==(Object other) {
+    return identical(this, other) ||
+        (other.runtimeType == runtimeType &&
+            other is _$LoadedImpl &&
+            const DeepCollectionEquality().equals(other._users, _users));
+  }
+
+  @override
+  int get hashCode =>
+      Object.hash(runtimeType, const DeepCollectionEquality().hash(_users));
+
+  /// Create a copy of UserState
+  /// with the given fields replaced by the non-null parameter values.
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  @override
+  @pragma('vm:prefer-inline')
+  _$$LoadedImplCopyWith<_$LoadedImpl> get copyWith =>
+      __$$LoadedImplCopyWithImpl<_$LoadedImpl>(this, _$identity);
+
+  @override
+  @optionalTypeArgs
+  TResult when<TResult extends Object?>({
+    required TResult Function() initial,
+    required TResult Function() loading,
+    required TResult Function(List<GithubUser> users) loaded,
+    required TResult Function(String message) error,
+  }) {
+    return loaded(users);
+  }
+
+  @override
+  @optionalTypeArgs
+  TResult? whenOrNull<TResult extends Object?>({
+    TResult? Function()? initial,
+    TResult? Function()? loading,
+    TResult? Function(List<GithubUser> users)? loaded,
+    TResult? Function(String message)? error,
+  }) {
+    return loaded?.call(users);
+  }
+
+  @override
+  @optionalTypeArgs
+  TResult maybeWhen<TResult extends Object?>({
+    TResult Function()? initial,
+    TResult Function()? loading,
+    TResult Function(List<GithubUser> users)? loaded,
+    TResult Function(String message)? error,
+    required TResult orElse(),
+  }) {
+    if (loaded != null) {
+      return loaded(users);
+    }
+    return orElse();
+  }
+
+  @override
+  @optionalTypeArgs
+  TResult map<TResult extends Object?>({
+    required TResult Function(_Initial value) initial,
+    required TResult Function(_Loading value) loading,
+    required TResult Function(_Loaded value) loaded,
+    required TResult Function(_Error value) error,
+  }) {
+    return loaded(this);
+  }
+
+  @override
+  @optionalTypeArgs
+  TResult? mapOrNull<TResult extends Object?>({
+    TResult? Function(_Initial value)? initial,
+    TResult? Function(_Loading value)? loading,
+    TResult? Function(_Loaded value)? loaded,
+    TResult? Function(_Error value)? error,
+  }) {
+    return loaded?.call(this);
+  }
+
+  @override
+  @optionalTypeArgs
+  TResult maybeMap<TResult extends Object?>({
+    TResult Function(_Initial value)? initial,
+    TResult Function(_Loading value)? loading,
+    TResult Function(_Loaded value)? loaded,
+    TResult Function(_Error value)? error,
+    required TResult orElse(),
+  }) {
+    if (loaded != null) {
+      return loaded(this);
+    }
+    return orElse();
+  }
+}
+
+abstract class _Loaded implements UserState {
+  const factory _Loaded(final List<GithubUser> users) = _$LoadedImpl;
+
+  List<GithubUser> get users;
+
+  /// Create a copy of UserState
+  /// with the given fields replaced by the non-null parameter values.
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  _$$LoadedImplCopyWith<_$LoadedImpl> get copyWith =>
+      throw _privateConstructorUsedError;
+}
+
+/// @nodoc
+abstract class _$$ErrorImplCopyWith<$Res> {
+  factory _$$ErrorImplCopyWith(
+          _$ErrorImpl value, $Res Function(_$ErrorImpl) then) =
+      __$$ErrorImplCopyWithImpl<$Res>;
+  @useResult
+  $Res call({String message});
+}
+
+/// @nodoc
+class __$$ErrorImplCopyWithImpl<$Res>
+    extends _$UserStateCopyWithImpl<$Res, _$ErrorImpl>
+    implements _$$ErrorImplCopyWith<$Res> {
+  __$$ErrorImplCopyWithImpl(
+      _$ErrorImpl _value, $Res Function(_$ErrorImpl) _then)
+      : super(_value, _then);
+
+  /// Create a copy of UserState
+  /// with the given fields replaced by the non-null parameter values.
+  @pragma('vm:prefer-inline')
+  @override
+  $Res call({
+    Object? message = null,
+  }) {
+    return _then(_$ErrorImpl(
+      null == message
+          ? _value.message
+          : message // ignore: cast_nullable_to_non_nullable
+              as String,
+    ));
+  }
+}
+
+/// @nodoc
+
+class _$ErrorImpl implements _Error {
+  const _$ErrorImpl(this.message);
+
+  @override
   final String message;
-  UserError(this.message);
+
+  @override
+  String toString() {
+    return 'UserState.error(message: $message)';
+  }
+
+  @override
+  bool operator ==(Object other) {
+    return identical(this, other) ||
+        (other.runtimeType == runtimeType &&
+            other is _$ErrorImpl &&
+            (identical(other.message, message) || other.message == message));
+  }
+
+  @override
+  int get hashCode => Object.hash(runtimeType, message);
+
+  /// Create a copy of UserState
+  /// with the given fields replaced by the non-null parameter values.
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  @override
+  @pragma('vm:prefer-inline')
+  _$$ErrorImplCopyWith<_$ErrorImpl> get copyWith =>
+      __$$ErrorImplCopyWithImpl<_$ErrorImpl>(this, _$identity);
+
+  @override
+  @optionalTypeArgs
+  TResult when<TResult extends Object?>({
+    required TResult Function() initial,
+    required TResult Function() loading,
+    required TResult Function(List<GithubUser> users) loaded,
+    required TResult Function(String message) error,
+  }) {
+    return error(message);
+  }
+
+  @override
+  @optionalTypeArgs
+  TResult? whenOrNull<TResult extends Object?>({
+    TResult? Function()? initial,
+    TResult? Function()? loading,
+    TResult? Function(List<GithubUser> users)? loaded,
+    TResult? Function(String message)? error,
+  }) {
+    return error?.call(message);
+  }
+
+  @override
+  @optionalTypeArgs
+  TResult maybeWhen<TResult extends Object?>({
+    TResult Function()? initial,
+    TResult Function()? loading,
+    TResult Function(List<GithubUser> users)? loaded,
+    TResult Function(String message)? error,
+    required TResult orElse(),
+  }) {
+    if (error != null) {
+      return error(message);
+    }
+    return orElse();
+  }
+
+  @override
+  @optionalTypeArgs
+  TResult map<TResult extends Object?>({
+    required TResult Function(_Initial value) initial,
+    required TResult Function(_Loading value) loading,
+    required TResult Function(_Loaded value) loaded,
+    required TResult Function(_Error value) error,
+  }) {
+    return error(this);
+  }
+
+  @override
+  @optionalTypeArgs
+  TResult? mapOrNull<TResult extends Object?>({
+    TResult? Function(_Initial value)? initial,
+    TResult? Function(_Loading value)? loading,
+    TResult? Function(_Loaded value)? loaded,
+    TResult? Function(_Error value)? error,
+  }) {
+    return error?.call(this);
+  }
+
+  @override
+  @optionalTypeArgs
+  TResult maybeMap<TResult extends Object?>({
+    TResult Function(_Initial value)? initial,
+    TResult Function(_Loading value)? loading,
+    TResult Function(_Loaded value)? loaded,
+    TResult Function(_Error value)? error,
+    required TResult orElse(),
+  }) {
+    if (error != null) {
+      return error(this);
+    }
+    return orElse();
+  }
+}
+
+abstract class _Error implements UserState {
+  const factory _Error(final String message) = _$ErrorImpl;
+
+  String get message;
+
+  /// Create a copy of UserState
+  /// with the given fields replaced by the non-null parameter values.
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  _$$ErrorImplCopyWith<_$ErrorImpl> get copyWith =>
+      throw _privateConstructorUsedError;
+}
+
+\n
+===== C:\Works\github_user_explorer_demo\lib\features\users\presentation\pages\user_detail_page.dart =====
+import 'package:flutter/material.dart';
+
+class UserDetailPage extends StatelessWidget {
+  final String id;
+  final String login;
+  final String avatarUrl;
+
+  const UserDetailPage({
+    super.key,
+    required this.id,
+    required this.login,
+    required this.avatarUrl,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('User Detail: $login'),
+      ),
+      body: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.start,
+          children: [
+            CircleAvatar(
+              radius: 40,
+              backgroundImage: NetworkImage(avatarUrl),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              login,
+              style: Theme.of(context).textTheme.headlineSmall,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'User ID: $id',
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+            const SizedBox(height: 24),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text("Go Back"),
+            )
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 \n
@@ -449,7 +1658,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:github_user_explorer/features/users/presentation/cubit/user_cubit.dart';
 import 'package:github_user_explorer/features/users/presentation/cubit/user_state.dart';
-import 'package:github_user_explorer/features/users/presentation/widgets/user_card.dart';
+import 'package:github_user_explorer/features/users/presentation/widgets/EmptyState.dart';
+import 'package:github_user_explorer/features/users/presentation/widgets/ErrorState.dart';
+import 'package:github_user_explorer/features/users/presentation/widgets/LoadingIndicator.dart';
+import 'package:github_user_explorer/features/users/presentation/widgets/UserCard.dart';
 import 'package:github_user_explorer/l10n/app_localizations.dart';
 
 class UserListPage extends StatefulWidget {
@@ -468,13 +1680,23 @@ class _UserListPageState extends State<UserListPage> {
     context.read<UserCubit>().fetchUsers();
   }
 
+  void _onSearch() {
+    context.read<UserCubit>().fetchUsers(query: _controller.text);
+  }
+
+  void _onSubmit(String value) {
+    context.read<UserCubit>().fetchUsers(query: value);
+  }
+
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
+
     return Scaffold(
       appBar: AppBar(title: Text(l10n!.usersTitle)),
       body: Column(
         children: [
+          // SEARCH BAR
           Padding(
             padding: const EdgeInsets.all(8.0),
             child: TextField(
@@ -483,47 +1705,66 @@ class _UserListPageState extends State<UserListPage> {
                 hintText: l10n.searchHint,
                 suffixIcon: IconButton(
                   icon: const Icon(Icons.search),
-                  onPressed: () => context
-                      .read<UserCubit>()
-                      .fetchUsers(query: _controller.text),
+                  onPressed: _onSearch,
                 ),
               ),
-              onSubmitted: (v) =>
-                  context.read<UserCubit>().fetchUsers(query: v),
+              onSubmitted: _onSubmit,
             ),
           ),
+
+          // STATE HANDLER
           Expanded(
             child: BlocBuilder<UserCubit, UserState>(
               builder: (context, state) {
-                switch (state) {
-                  case UserInitial():
-                    return Center(child: Text(l10n.emptyState));
-                  case UserLoading():
-                    return const Center(child: CircularProgressIndicator());
-                  case UserLoaded(:final users):
-                    return ListView.builder(
-                      itemCount: users.length,
-                      itemBuilder: (context, index) =>
-                          UserCard(user: users[index]),
+                return state.when(
+                  initial: () => const EmptyStateWidget(),
+
+                  loading: () => const LoadingIndicator(),
+
+                  loaded: (users) {
+                    return LayoutBuilder(
+                      builder: (context, constraints) {
+                        final isWide = constraints.maxWidth > 600;
+
+                        // GRID UI FOR LARGE SCREEN
+                        if (isWide) {
+                          return GridView.builder(
+                            padding: const EdgeInsets.all(8),
+                            gridDelegate:
+                                const SliverGridDelegateWithFixedCrossAxisCount(
+                              crossAxisCount: 2,
+                              childAspectRatio: 3,
+                              crossAxisSpacing: 8,
+                              mainAxisSpacing: 8,
+                            ),
+                            itemCount: users.length,
+                            itemBuilder: (_, index) =>
+                                UserCard(user: users[index]),
+                          );
+                        }
+
+                        // LIST UI FOR MOBILE
+                        return ListView.builder(
+                          padding: const EdgeInsets.all(8),
+                          itemCount: users.length,
+                          itemBuilder: (_, index) =>
+                              UserCard(user: users[index]),
+                        );
+                      },
                     );
-                  case UserError(:final message):
-                    return Center(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(l10n.errorState),
-                          Text(message,
-                              style: Theme.of(context).textTheme.bodySmall),
-                          const SizedBox(height: 8),
-                          ElevatedButton(
-                            onPressed: () =>
-                                context.read<UserCubit>().fetchUsers(),
-                            child: Text(l10n.retry),
-                          )
-                        ],
-                      ),
-                    );
-                }
+                  },
+
+                  error: (message) => Center(
+                    child: ErrorMessageWidget(
+                      errorText: l10n.errorState,
+                      details: message,
+                      onRetry: () =>
+                          context.read<UserCubit>().fetchUsers(),
+                      retryText: l10n.retry,
+                      textStyle: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ),
+                );
               },
             ),
           ),
@@ -534,12 +1775,69 @@ class _UserListPageState extends State<UserListPage> {
 }
 
 \n
-===== C:\Works\github_user_explorer_demo\lib\features\users\presentation\widgets\user_card.dart =====
+===== C:\Works\github_user_explorer_demo\lib\features\users\presentation\widgets\EmptyState.dart =====
 import 'package:flutter/material.dart';
+import 'package:github_user_explorer/l10n/app_localizations.dart';
+class EmptyStateWidget extends StatelessWidget {
+  const EmptyStateWidget({super.key});
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    return Center(child: Text(l10n!.emptyState));
+  }
+}
+\n
+===== C:\Works\github_user_explorer_demo\lib\features\users\presentation\widgets\ErrorState.dart =====
+import 'package:flutter/material.dart';
+class ErrorMessageWidget extends StatelessWidget {
+  final String errorText;
+  final String details;
+  final VoidCallback onRetry;
+  final String retryText;
+  final TextStyle? textStyle;
+  const ErrorMessageWidget({
+    super.key,
+    required this.errorText,
+    required this.details,
+    required this.onRetry,
+    this.retryText = "Retry",
+    this.textStyle,
+  });
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(errorText),
+        Text(details, style: textStyle),
+        const SizedBox(height: 8),
+        ElevatedButton(
+          onPressed: onRetry,
+          child: Text(retryText),
+        ),
+      ],
+    );
+  }
+}
+\n
+===== C:\Works\github_user_explorer_demo\lib\features\users\presentation\widgets\LoadingIndicator.dart =====
+import 'package:flutter/material.dart';
+class LoadingIndicator extends StatelessWidget {
+  const LoadingIndicator({super.key});
+  @override
+  Widget build(BuildContext context) {
+    return const Center(child: CircularProgressIndicator());
+  }
+}
+\n
+===== C:\Works\github_user_explorer_demo\lib\features\users\presentation\widgets\UserCard.dart =====
+import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:github_user_explorer/features/users/domain/entities/github_user.dart';
 
 class UserCard extends StatelessWidget {
   final GithubUser user;
+
   const UserCard({super.key, required this.user});
 
   @override
@@ -550,6 +1848,11 @@ class UserCard extends StatelessWidget {
         title: Text(user.login),
         subtitle: Text(user.htmlUrl),
         trailing: const Icon(Icons.chevron_right),
+        onTap: () {
+          context.push(
+            '/detail/${user.id}?login=${user.login}&avatar=${user.avatarUrl}',
+          );
+        },
       ),
     );
   }
@@ -828,3 +2131,4202 @@ class AppLocalizationsVi extends AppLocalizations {
 }
 
 \n
+===== C:\Works\github_user_explorer_demo\lib\app.dart =====
+import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:github_user_explorer/core/di/injection.dart';
+import 'package:github_user_explorer/core/router/app_router.dart';
+import 'package:github_user_explorer/core/theme/app_theme.dart';
+import 'package:github_user_explorer/core/utils/app_config.dart';
+import 'package:github_user_explorer/features/users/domain/repositories/github_user_repository.dart';
+import 'package:github_user_explorer/features/users/domain/usecases/get_users.dart';
+import 'package:github_user_explorer/features/users/presentation/cubit/user_cubit.dart';
+import 'package:github_user_explorer/l10n/app_localizations.dart';
+
+class MyApp extends StatelessWidget {
+  const MyApp({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final config = AppConfig.of(context);
+
+    return MultiBlocProvider(
+      providers: [
+        BlocProvider(
+          create: (_) => UserCubit(getIt<GithubUserRepository>()),
+        ),
+      ],
+      child: MaterialApp.router(
+        title: 'GitHub User Explorer',
+        debugShowCheckedModeBanner: false,
+        theme: AppTheme.light,
+        darkTheme: AppTheme.dark,
+        themeMode: ThemeMode.system,
+        routerConfig: appRouter,
+        localizationsDelegates: const [
+          AppLocalizations.delegate,
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
+        supportedLocales: AppLocalizations.supportedLocales,
+      ),
+    );
+  }
+}
+
+\n
+===== C:\Works\github_user_explorer_demo\lib\code_report.txt =====
+===== C:\Works\github_user_explorer_demo\lib\app.dart =====
+import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:github_user_explorer/core/di/injection.dart';
+import 'package:github_user_explorer/core/router/app_router.dart';
+import 'package:github_user_explorer/core/theme/app_theme.dart';
+import 'package:github_user_explorer/core/utils/app_config.dart';
+import 'package:github_user_explorer/features/users/domain/usecases/get_users.dart';
+import 'package:github_user_explorer/features/users/presentation/cubit/user_cubit.dart';
+import 'package:github_user_explorer/l10n/app_localizations.dart';
+
+class MyApp extends StatelessWidget {
+  const MyApp({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final config = AppConfig.of(context);
+
+    return MultiBlocProvider(
+      providers: [
+        BlocProvider(
+          create: (_) => UserCubit(getIt<GetUsers>()),
+        ),
+      ],
+      child: MaterialApp.router(
+        title: 'GitHub User Explorer',
+        debugShowCheckedModeBanner: false,
+        theme: AppTheme.light,
+        darkTheme: AppTheme.dark,
+        themeMode: ThemeMode.system,
+        routerConfig: appRouter,
+        localizationsDelegates: const [
+          AppLocalizations.delegate,
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
+        supportedLocales: AppLocalizations.supportedLocales,
+      ),
+    );
+  }
+}
+
+\n
+===== C:\Works\github_user_explorer_demo\lib\main.dart =====
+import 'package:flutter/material.dart';
+import 'package:github_user_explorer/app.dart';
+import 'package:github_user_explorer/core/di/injection.dart';
+import 'package:github_user_explorer/core/utils/app_config.dart';
+
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  const flavor = String.fromEnvironment('FLAVOR', defaultValue: 'DEV');
+  final baseUrl = 'https://api.github.com';
+
+  final theme = switch (flavor) {
+    'PROD' => ThemeData.dark(useMaterial3: true)
+        .copyWith(colorScheme: ColorScheme.fromSeed(seedColor: Colors.orange)),
+    _ => ThemeData.light(useMaterial3: true)
+        .copyWith(colorScheme: ColorScheme.fromSeed(seedColor: Colors.indigo)),
+  };
+
+  //mở rộng thêm textTheme và buttonTheme để chuẩn hóa style
+  theme.copyWith(
+  textTheme: const TextTheme(
+    bodyMedium: TextStyle(fontSize: 16, fontFamily: 'Roboto'),
+  ),
+  elevatedButtonTheme: ElevatedButtonThemeData(
+    style: ElevatedButton.styleFrom(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+    ),
+  ),
+);
+
+
+  final config = AppConfig(
+    baseUrl: baseUrl,
+    flavor: flavor,
+    theme: theme,
+    // Bật mock để không cần internet
+    useMockRepo: false,
+    child: const MyApp(),
+  );
+
+  await setupDependencies(config);
+
+  runApp(config);
+}
+
+\n
+===== C:\Works\github_user_explorer_demo\lib\core\di\injection.dart =====
+import 'package:dio/dio.dart';
+import 'package:get_it/get_it.dart';
+
+import '../../features/users/data/github_user_remote_data_source.dart';
+import '../../features/users/data/repositories/github_user_repository_impl.dart';
+import '../../features/users/data/repositories/github_user_repository_mock.dart';
+import '../../features/users/domain/repositories/github_user_repository.dart';
+import '../../features/users/domain/usecases/get_users.dart';
+import '../../features/users/presentation/cubit/user_cubit.dart';
+import '../network/app_http_client.dart';
+import '../utils/app_config.dart';
+
+final GetIt getIt = GetIt.instance;
+
+Future<void> setupDependencies(AppConfig config) async {
+  // 1. Config
+  getIt.registerSingleton<AppConfig>(config);
+
+  // 2. Dio client (baseUrl + timeout + logging)
+  final dio = Dio(
+    BaseOptions(
+      baseUrl: config.baseUrl,
+      connectTimeout: const Duration(seconds: 10),
+      receiveTimeout: const Duration(seconds: 10),
+    ),
+  )..interceptors.add(LogInterceptor(responseBody: true));
+
+  // 3. AppHttpClient
+  getIt.registerLazySingleton<AppHttpClient>(() => AppHttpClient(dio));
+
+  // 4. Remote DataSource
+  getIt.registerLazySingleton<GithubUserRemoteDataSource>(
+    () => GithubUserRemoteDataSourceImpl(getIt<AppHttpClient>()),
+  );
+
+  // 5. Repository
+  getIt.registerLazySingleton<GithubUserRepository>(
+    () => config.useMockRepo
+        ? GithubUserRepositoryMock()
+        : GithubUserRepositoryImpl(getIt<GithubUserRemoteDataSource>()),
+  );
+
+  // 6. UseCase
+  getIt.registerLazySingleton<GetUsers>(
+    () => GetUsers(getIt<GithubUserRepository>()),
+  );
+
+  // 7. Cubit
+  getIt.registerFactory<UserCubit>(
+    () => UserCubit(getIt<GetUsers>()),
+  );
+}
+
+\n
+===== C:\Works\github_user_explorer_demo\lib\core\error\app_exception.dart =====
+class AppException implements Exception {
+  final String message;
+  AppException(this.message);
+  @override
+  String toString() => 'AppException: $message';
+}
+
+\n
+===== C:\Works\github_user_explorer_demo\lib\core\network\api_result.dart =====
+import 'package:dio/dio.dart';
+
+class AppHttpClient {
+  final Dio dio;
+
+  AppHttpClient(this.dio);
+
+  Future<Response> get(
+    String path, {
+    Map<String, dynamic>? queryParameters,
+  }) async {
+    try {
+      return await dio.get(
+        path,
+        queryParameters: queryParameters,
+      );
+    } on DioException catch (e) {
+      throw Exception(e.message);
+    }
+  }
+
+  Future<Response> post(
+    String path, {
+    dynamic data,
+    Map<String, dynamic>? queryParameters,
+  }) async {
+    try {
+      return await dio.post(
+        path,
+        data: data,
+        queryParameters: queryParameters,
+      );
+    } on DioException catch (e) {
+      throw Exception(e.message);
+    }
+  }
+}
+
+\n
+===== C:\Works\github_user_explorer_demo\lib\core\network\app_http_client.dart =====
+import 'package:dio/dio.dart';
+
+class AppHttpClient {
+  final Dio dio;
+
+  AppHttpClient(this.dio);
+
+  Future<Response> get(
+    String path, {
+    Map<String, dynamic>? queryParameters,
+  }) async {
+    return dio.get(path, queryParameters: queryParameters);
+  }
+
+  Future<Response> post(
+    String path, {
+    dynamic data,
+    Map<String, dynamic>? queryParameters,
+  }) async {
+    return dio.post(path, data: data, queryParameters: queryParameters);
+  }
+}
+
+\n
+===== C:\Works\github_user_explorer_demo\lib\core\network\app_interceptor.dart =====
+import 'dart:developer';
+import 'package:dio/dio.dart';
+
+class AppInterceptor extends Interceptor {
+  final Dio dio;
+
+  AppInterceptor(this.dio);
+
+  @override
+  void onRequest(RequestOptions options, RequestInterceptorHandler handler) {
+    log(
+      '-- REQUEST --\n'
+      'URL: ${options.uri}\n'
+      'Method: ${options.method}\n'
+      'Headers: ${options.headers}\n'
+      'Data: ${options.data}',
+      name: 'HTTP',
+    );
+
+    // Ví dụ: thêm token nếu có
+    // options.headers['Authorization'] = 'Bearer YOUR_TOKEN';
+
+    super.onRequest(options, handler);
+  }
+
+  @override
+  void onResponse(Response response, ResponseInterceptorHandler handler) {
+    log(
+      '-- RESPONSE --\n'
+      'URL: ${response.realUri}\n'
+      'Status: ${response.statusCode}\n'
+      'Data: ${response.data}',
+      name: 'HTTP',
+    );
+
+    super.onResponse(response, handler);
+  }
+
+  @override
+  void onError(DioException err, ErrorInterceptorHandler handler) async {
+    log(
+      '-- ERROR --\n'
+      'TYPE: ${err.type}\n'
+      'URL: ${err.requestOptions.uri}\n'
+      'Message: ${err.message}',
+      name: 'HTTP',
+    );
+
+    // Nếu lỗi 401 -> refresh token (giả lập)
+    if (err.response?.statusCode == 401) {
+      try {
+        log('Refreshing token...', name: 'HTTP');
+
+        // 🔥 TẠO TOKEN MỚI (ví dụ demo)
+        final newToken = await _fakeRefreshToken();
+
+        // Gắn lại token vào header
+        err.requestOptions.headers['Authorization'] = 'Bearer $newToken';
+
+        // Retry request với token mới
+        final retryResponse =
+            await dio.fetch(err.requestOptions);
+
+        return handler.resolve(retryResponse);
+      } catch (_) {
+        log('Token refresh failed', name: 'HTTP');
+      }
+    }
+
+    // Retry nếu lỗi timeout hoặc network (tối đa 1 lần)
+    if (err.type == DioExceptionType.connectionTimeout ||
+        err.type == DioExceptionType.receiveTimeout ||
+        err.type == DioExceptionType.sendTimeout) {
+      try {
+        log('Retrying request...', name: 'HTTP');
+        final retryResponse = await dio.fetch(err.requestOptions);
+        return handler.resolve(retryResponse);
+      } catch (_) {
+        log('Retry failed', name: 'HTTP');
+      }
+    }
+
+    return handler.next(err);
+  }
+
+  /// Fake refresh token (demo) — bạn có thể sửa lại tuỳ app của bạn
+  Future<String> _fakeRefreshToken() async {
+    await Future.delayed(const Duration(milliseconds: 500));
+    return 'NEW_TOKEN_ABC123';
+  }
+}
+
+\n
+===== C:\Works\github_user_explorer_demo\lib\core\network\base_repository.dart =====
+import 'package:dio/dio.dart';
+import 'base_response.dart';
+import 'error_mapper.dart';
+
+class BaseRepository {
+  final Dio dio;
+
+  BaseRepository(this.dio);
+
+  Future<BaseResponse<T>> safeApiCall<T>(
+    Future<dynamic> Function() call,
+    T Function(dynamic json) mapper,
+  ) async {
+    try {
+      final result = await call(); // Có thể là Response hoặc Map/List
+
+      // Nếu là Response<Dio>
+      if (result is Response) {
+        return BaseResponse<T>(data: mapper(result.data));
+      }
+
+      // Nếu DataSource trả `response.data` trực tiếp
+      return BaseResponse<T>(data: mapper(result));
+    } catch (error) {
+      final msg = ErrorMapper.toMessage(error);
+      return BaseResponse<T>(error: msg);
+    }
+  }
+}
+
+\n
+===== C:\Works\github_user_explorer_demo\lib\core\network\base_response.dart =====
+class BaseResponse<T> {
+  final T? data;
+  final String? error;
+
+  const BaseResponse({this.data, this.error});
+
+  bool get hasError => error != null && error!.isNotEmpty;
+}
+\n
+===== C:\Works\github_user_explorer_demo\lib\core\network\error_mapper.dart =====
+import 'package:dio/dio.dart';
+
+class ErrorMapper {
+  static String toMessage(dynamic error) {
+    if (error is DioException) {
+      switch (error.type) {
+        case DioExceptionType.connectionTimeout:
+        case DioExceptionType.sendTimeout:
+        case DioExceptionType.receiveTimeout:
+          return "Kết nối tới máy chủ quá hạn.";
+
+        case DioExceptionType.badResponse:
+          final status = error.response?.statusCode;
+          if (status == 401) return "Bạn không có quyền truy cập.";
+          if (status == 404) return "Không tìm thấy tài nguyên.";
+          if (status == 500) return "Lỗi máy chủ, vui lòng thử lại.";
+          return "Lỗi máy chủ ($status).";
+
+        case DioExceptionType.unknown:
+          return "Không có kết nối Internet.";
+
+        default:
+          return "Đã xảy ra lỗi không xác định.";
+      }
+    }
+
+    return error.toString();
+  }
+}
+  
+\n
+===== C:\Works\github_user_explorer_demo\lib\core\router\app_router.dart =====
+import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
+import 'package:github_user_explorer/features/users/presentation/pages/user_list_page.dart';
+import 'package:github_user_explorer/features/users/presentation/pages/user_detail_page.dart';
+
+final appRouter = GoRouter(
+  routes: [
+    /// Home Page
+    GoRoute(
+      path: '/',
+      name: 'home',
+      builder: (context, state) => const UserListPage(),
+    ),
+
+    /// User detail page: /detail/123?login=abc&avatar=url
+    GoRoute(
+      path: '/detail/:id',
+      name: 'detail',
+      builder: (context, state) {
+        final id = state.pathParameters['id']!;
+        final login = state.uri.queryParameters['login'] ?? '';
+        final avatar = state.uri.queryParameters['avatar'] ?? '';
+
+        return UserDetailPage(
+          id: id,
+          login: login,
+          avatarUrl: avatar,
+        );
+      },
+    ),
+  ],
+);
+
+\n
+===== C:\Works\github_user_explorer_demo\lib\core\theme\app_theme.dart =====
+import 'package:flutter/material.dart';
+
+class AppTheme {
+  static ThemeData get light => ThemeData(
+        brightness: Brightness.light,
+        primarySwatch: Colors.blue,
+        scaffoldBackgroundColor: Colors.white,
+        appBarTheme: const AppBarTheme(
+          backgroundColor: Colors.blue,
+          foregroundColor: Colors.white,
+        ),
+      );
+
+  static ThemeData get dark => ThemeData(
+        brightness: Brightness.dark,
+        scaffoldBackgroundColor: Colors.black,
+        appBarTheme: const AppBarTheme(
+          backgroundColor: Colors.black,
+          foregroundColor: Colors.white,
+        ),
+      );
+}
+
+\n
+===== C:\Works\github_user_explorer_demo\lib\core\utils\app_config.dart =====
+import 'package:flutter/material.dart';
+
+class AppConfig extends InheritedWidget {
+  final String baseUrl;
+  final String flavor;
+  final bool useMockRepo;
+  final ThemeData theme;
+
+  const AppConfig({
+    super.key,
+    required this.baseUrl,
+    required this.flavor,
+    this.useMockRepo = false,
+    required this.theme,
+    required super.child,
+  });
+
+  static AppConfig of(BuildContext context) {
+    final AppConfig? result =
+        context.dependOnInheritedWidgetOfExactType<AppConfig>();
+    assert(result != null, 'No AppConfig found in context');
+    return result!;
+  }
+
+  @override
+  bool updateShouldNotify(covariant AppConfig oldWidget) =>
+      baseUrl != oldWidget.baseUrl ||
+      flavor != oldWidget.flavor ||
+      theme != oldWidget.theme;
+}
+
+\n
+===== C:\Works\github_user_explorer_demo\lib\features\users\data\github_user_remote_data_source.dart =====
+import 'package:github_user_explorer/core/network/app_http_client.dart';
+import 'package:dio/dio.dart';
+
+abstract class GithubUserRemoteDataSource {
+  AppHttpClient get client;
+
+  Future<Response> getUsers({String? query});
+}
+
+class GithubUserRemoteDataSourceImpl implements GithubUserRemoteDataSource {
+  @override
+  final AppHttpClient client;
+
+  GithubUserRemoteDataSourceImpl(this.client);
+
+  @override
+  Future<Response> getUsers({String? query}) {
+    return client.get(
+      '/search/users',
+      queryParameters: (query != null && query.isNotEmpty)
+          ? {'q': query}
+          : {'q': 'flutter'},
+    );
+  }
+}
+
+\n
+===== C:\Works\github_user_explorer_demo\lib\features\users\data\models\github_user_model.dart =====
+import 'package:freezed_annotation/freezed_annotation.dart';
+import 'package:github_user_explorer/features/users/domain/entities/github_user.dart';
+
+part 'github_user_model.freezed.dart';
+part 'github_user_model.g.dart';
+
+@freezed
+class GithubUserModel with _$GithubUserModel {
+  const factory GithubUserModel({
+    required int id,
+    required String login,
+    @JsonKey(name: 'avatar_url') required String avatarUrl,
+    @JsonKey(name: 'html_url') required String htmlUrl,
+  }) = _GithubUserModel;
+
+  factory GithubUserModel.fromJson(Map<String, dynamic> json) =>
+      _$GithubUserModelFromJson(json);
+}
+
+extension GithubUserModelMapper on GithubUserModel {
+  GithubUser toEntity() => GithubUser(
+        id: id,
+        login: login,
+        avatarUrl: avatarUrl,
+        htmlUrl: htmlUrl,
+      );
+
+  static GithubUserModel fromEntity(GithubUser user) =>
+      GithubUserModel(
+        id: user.id,
+        login: user.login,
+        avatarUrl: user.avatarUrl,
+        htmlUrl: user.htmlUrl,
+      );
+}
+
+\n
+===== C:\Works\github_user_explorer_demo\lib\features\users\data\models\github_user_model.freezed.dart =====
+// coverage:ignore-file
+// GENERATED CODE - DO NOT MODIFY BY HAND
+// ignore_for_file: type=lint
+// ignore_for_file: unused_element, deprecated_member_use, deprecated_member_use_from_same_package, use_function_type_syntax_for_parameters, unnecessary_const, avoid_init_to_null, invalid_override_different_default_values_named, prefer_expression_function_bodies, annotate_overrides, invalid_annotation_target, unnecessary_question_mark
+
+part of 'github_user_model.dart';
+
+// **************************************************************************
+// FreezedGenerator
+// **************************************************************************
+
+T _$identity<T>(T value) => value;
+
+final _privateConstructorUsedError = UnsupportedError(
+    'It seems like you constructed your class using `MyClass._()`. This constructor is only meant to be used by freezed and you are not supposed to need it nor use it.\nPlease check the documentation here for more information: https://github.com/rrousselGit/freezed#adding-getters-and-methods-to-our-models');
+
+GithubUserModel _$GithubUserModelFromJson(Map<String, dynamic> json) {
+  return _GithubUserModel.fromJson(json);
+}
+
+/// @nodoc
+mixin _$GithubUserModel {
+  int get id => throw _privateConstructorUsedError;
+  String get login => throw _privateConstructorUsedError;
+  @JsonKey(name: 'avatar_url')
+  String get avatarUrl => throw _privateConstructorUsedError;
+  @JsonKey(name: 'html_url')
+  String get htmlUrl => throw _privateConstructorUsedError;
+
+  /// Serializes this GithubUserModel to a JSON map.
+  Map<String, dynamic> toJson() => throw _privateConstructorUsedError;
+
+  /// Create a copy of GithubUserModel
+  /// with the given fields replaced by the non-null parameter values.
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  $GithubUserModelCopyWith<GithubUserModel> get copyWith =>
+      throw _privateConstructorUsedError;
+}
+
+/// @nodoc
+abstract class $GithubUserModelCopyWith<$Res> {
+  factory $GithubUserModelCopyWith(
+          GithubUserModel value, $Res Function(GithubUserModel) then) =
+      _$GithubUserModelCopyWithImpl<$Res, GithubUserModel>;
+  @useResult
+  $Res call(
+      {int id,
+      String login,
+      @JsonKey(name: 'avatar_url') String avatarUrl,
+      @JsonKey(name: 'html_url') String htmlUrl});
+}
+
+/// @nodoc
+class _$GithubUserModelCopyWithImpl<$Res, $Val extends GithubUserModel>
+    implements $GithubUserModelCopyWith<$Res> {
+  _$GithubUserModelCopyWithImpl(this._value, this._then);
+
+  // ignore: unused_field
+  final $Val _value;
+  // ignore: unused_field
+  final $Res Function($Val) _then;
+
+  /// Create a copy of GithubUserModel
+  /// with the given fields replaced by the non-null parameter values.
+  @pragma('vm:prefer-inline')
+  @override
+  $Res call({
+    Object? id = null,
+    Object? login = null,
+    Object? avatarUrl = null,
+    Object? htmlUrl = null,
+  }) {
+    return _then(_value.copyWith(
+      id: null == id
+          ? _value.id
+          : id // ignore: cast_nullable_to_non_nullable
+              as int,
+      login: null == login
+          ? _value.login
+          : login // ignore: cast_nullable_to_non_nullable
+              as String,
+      avatarUrl: null == avatarUrl
+          ? _value.avatarUrl
+          : avatarUrl // ignore: cast_nullable_to_non_nullable
+              as String,
+      htmlUrl: null == htmlUrl
+          ? _value.htmlUrl
+          : htmlUrl // ignore: cast_nullable_to_non_nullable
+              as String,
+    ) as $Val);
+  }
+}
+
+/// @nodoc
+abstract class _$$GithubUserModelImplCopyWith<$Res>
+    implements $GithubUserModelCopyWith<$Res> {
+  factory _$$GithubUserModelImplCopyWith(_$GithubUserModelImpl value,
+          $Res Function(_$GithubUserModelImpl) then) =
+      __$$GithubUserModelImplCopyWithImpl<$Res>;
+  @override
+  @useResult
+  $Res call(
+      {int id,
+      String login,
+      @JsonKey(name: 'avatar_url') String avatarUrl,
+      @JsonKey(name: 'html_url') String htmlUrl});
+}
+
+/// @nodoc
+class __$$GithubUserModelImplCopyWithImpl<$Res>
+    extends _$GithubUserModelCopyWithImpl<$Res, _$GithubUserModelImpl>
+    implements _$$GithubUserModelImplCopyWith<$Res> {
+  __$$GithubUserModelImplCopyWithImpl(
+      _$GithubUserModelImpl _value, $Res Function(_$GithubUserModelImpl) _then)
+      : super(_value, _then);
+
+  /// Create a copy of GithubUserModel
+  /// with the given fields replaced by the non-null parameter values.
+  @pragma('vm:prefer-inline')
+  @override
+  $Res call({
+    Object? id = null,
+    Object? login = null,
+    Object? avatarUrl = null,
+    Object? htmlUrl = null,
+  }) {
+    return _then(_$GithubUserModelImpl(
+      id: null == id
+          ? _value.id
+          : id // ignore: cast_nullable_to_non_nullable
+              as int,
+      login: null == login
+          ? _value.login
+          : login // ignore: cast_nullable_to_non_nullable
+              as String,
+      avatarUrl: null == avatarUrl
+          ? _value.avatarUrl
+          : avatarUrl // ignore: cast_nullable_to_non_nullable
+              as String,
+      htmlUrl: null == htmlUrl
+          ? _value.htmlUrl
+          : htmlUrl // ignore: cast_nullable_to_non_nullable
+              as String,
+    ));
+  }
+}
+
+/// @nodoc
+@JsonSerializable()
+class _$GithubUserModelImpl implements _GithubUserModel {
+  const _$GithubUserModelImpl(
+      {required this.id,
+      required this.login,
+      @JsonKey(name: 'avatar_url') required this.avatarUrl,
+      @JsonKey(name: 'html_url') required this.htmlUrl});
+
+  factory _$GithubUserModelImpl.fromJson(Map<String, dynamic> json) =>
+      _$$GithubUserModelImplFromJson(json);
+
+  @override
+  final int id;
+  @override
+  final String login;
+  @override
+  @JsonKey(name: 'avatar_url')
+  final String avatarUrl;
+  @override
+  @JsonKey(name: 'html_url')
+  final String htmlUrl;
+
+  @override
+  String toString() {
+    return 'GithubUserModel(id: $id, login: $login, avatarUrl: $avatarUrl, htmlUrl: $htmlUrl)';
+  }
+
+  @override
+  bool operator ==(Object other) {
+    return identical(this, other) ||
+        (other.runtimeType == runtimeType &&
+            other is _$GithubUserModelImpl &&
+            (identical(other.id, id) || other.id == id) &&
+            (identical(other.login, login) || other.login == login) &&
+            (identical(other.avatarUrl, avatarUrl) ||
+                other.avatarUrl == avatarUrl) &&
+            (identical(other.htmlUrl, htmlUrl) || other.htmlUrl == htmlUrl));
+  }
+
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  @override
+  int get hashCode => Object.hash(runtimeType, id, login, avatarUrl, htmlUrl);
+
+  /// Create a copy of GithubUserModel
+  /// with the given fields replaced by the non-null parameter values.
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  @override
+  @pragma('vm:prefer-inline')
+  _$$GithubUserModelImplCopyWith<_$GithubUserModelImpl> get copyWith =>
+      __$$GithubUserModelImplCopyWithImpl<_$GithubUserModelImpl>(
+          this, _$identity);
+
+  @override
+  Map<String, dynamic> toJson() {
+    return _$$GithubUserModelImplToJson(
+      this,
+    );
+  }
+}
+
+abstract class _GithubUserModel implements GithubUserModel {
+  const factory _GithubUserModel(
+          {required final int id,
+          required final String login,
+          @JsonKey(name: 'avatar_url') required final String avatarUrl,
+          @JsonKey(name: 'html_url') required final String htmlUrl}) =
+      _$GithubUserModelImpl;
+
+  factory _GithubUserModel.fromJson(Map<String, dynamic> json) =
+      _$GithubUserModelImpl.fromJson;
+
+  @override
+  int get id;
+  @override
+  String get login;
+  @override
+  @JsonKey(name: 'avatar_url')
+  String get avatarUrl;
+  @override
+  @JsonKey(name: 'html_url')
+  String get htmlUrl;
+
+  /// Create a copy of GithubUserModel
+  /// with the given fields replaced by the non-null parameter values.
+  @override
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  _$$GithubUserModelImplCopyWith<_$GithubUserModelImpl> get copyWith =>
+      throw _privateConstructorUsedError;
+}
+
+\n
+===== C:\Works\github_user_explorer_demo\lib\features\users\data\models\github_user_model.g.dart =====
+// GENERATED CODE - DO NOT MODIFY BY HAND
+
+part of 'github_user_model.dart';
+
+// **************************************************************************
+// JsonSerializableGenerator
+// **************************************************************************
+
+_$GithubUserModelImpl _$$GithubUserModelImplFromJson(
+        Map<String, dynamic> json) =>
+    _$GithubUserModelImpl(
+      id: (json['id'] as num).toInt(),
+      login: json['login'] as String,
+      avatarUrl: json['avatar_url'] as String,
+      htmlUrl: json['html_url'] as String,
+    );
+
+Map<String, dynamic> _$$GithubUserModelImplToJson(
+        _$GithubUserModelImpl instance) =>
+    <String, dynamic>{
+      'id': instance.id,
+      'login': instance.login,
+      'avatar_url': instance.avatarUrl,
+      'html_url': instance.htmlUrl,
+    };
+
+\n
+===== C:\Works\github_user_explorer_demo\lib\features\users\data\repositories\github_user_repository_impl.dart =====
+import 'package:github_user_explorer/core/network/base_repository.dart';
+import 'package:github_user_explorer/features/users/data/github_user_remote_data_source.dart';
+import 'package:github_user_explorer/features/users/data/models/github_user_model.dart';
+import 'package:github_user_explorer/features/users/domain/entities/github_user.dart';
+import 'package:github_user_explorer/features/users/domain/repositories/github_user_repository.dart';
+
+class GithubUserRepositoryImpl extends BaseRepository
+    implements GithubUserRepository {
+  final GithubUserRemoteDataSource _remote;
+
+  GithubUserRepositoryImpl(this._remote)
+      : super(_remote.client.dio);
+
+  @override
+  Future<List<GithubUser>> getUsers({String? query}) async {
+    final result = await safeApiCall<List<GithubUser>>(
+      () => _remote.getUsers(query: query), // ✔ gọi API trả Response
+      (data) {
+        final items = data['items'] as List<dynamic>;
+        return items
+            .map((e) => GithubUserModel.fromJson(e).toEntity())
+            .toList();
+      },
+    );
+
+    if (result.hasError) throw Exception(result.error);
+    return result.data!;
+  }
+}
+  
+\n
+===== C:\Works\github_user_explorer_demo\lib\features\users\data\repositories\github_user_repository_mock.dart =====
+import 'package:github_user_explorer/features/users/domain/entities/github_user.dart';
+import 'package:github_user_explorer/features/users/domain/repositories/github_user_repository.dart';
+
+/// Repo mock dùng khi emulator không gọi được https://api.github.com
+/// hoặc khi bạn dạy thực hành offline.
+class GithubUserRepositoryMock implements GithubUserRepository {
+  @override
+  Future<List<GithubUser>> getUsers({String? query}) async {
+    // giả lập network
+    await Future<void>.delayed(const Duration(milliseconds: 400));
+
+    final q = (query ?? '').toLowerCase();
+
+    final data = <GithubUser>[
+      GithubUser(
+        id: 1,
+        login: 'flutterdev',
+        avatarUrl: 'https://via.placeholder.com/150?text=flutter',
+        htmlUrl: 'https://github.com/flutter',
+      ),
+      GithubUser(
+        id: 2,
+        login: 'dart-lang',
+        avatarUrl: 'https://via.placeholder.com/150?text=dart',
+        htmlUrl: 'https://github.com/dart-lang',
+      ),
+      GithubUser(
+        id: 3,
+        login: 'your-company',
+        avatarUrl: 'https://via.placeholder.com/150?text=company',
+        htmlUrl: 'https://github.com/your-company',
+      ),
+    ];
+
+    // nếu có query thì lọc cho sinh động
+    if (q.isNotEmpty) {
+      return data.where((e) => e.login.toLowerCase().contains(q)).toList();
+    }
+
+    return data;
+  }
+}
+
+\n
+===== C:\Works\github_user_explorer_demo\lib\features\users\domain\entities\github_user.dart =====
+class GithubUser {
+  final int id;
+  final String login;
+  final String avatarUrl;
+  final String htmlUrl;
+
+  GithubUser({
+    required this.id,
+    required this.login,
+    required this.avatarUrl,
+    required this.htmlUrl,
+  });
+}
+
+\n
+===== C:\Works\github_user_explorer_demo\lib\features\users\domain\repositories\github_user_repository.dart =====
+import 'package:github_user_explorer/features/users/domain/entities/github_user.dart';
+
+abstract class GithubUserRepository {
+  Future<List<GithubUser>> getUsers({String? query});
+}
+
+\n
+===== C:\Works\github_user_explorer_demo\lib\features\users\domain\usecases\get_users.dart =====
+import 'package:github_user_explorer/features/users/domain/entities/github_user.dart';
+import 'package:github_user_explorer/features/users/domain/repositories/github_user_repository.dart';
+
+class GetUsers {
+  final GithubUserRepository _repo;
+  GetUsers(this._repo);
+
+  Future<List<GithubUser>> call({String? query}) => _repo.getUsers(query: query);
+}
+
+\n
+===== C:\Works\github_user_explorer_demo\lib\features\users\presentation\cubit\user_cubit.dart =====
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:github_user_explorer/features/users/domain/usecases/get_users.dart';
+import 'package:github_user_explorer/features/users/presentation/cubit/user_state.dart';
+
+class UserCubit extends Cubit<UserState> {
+  final GetUsers _getUsers;
+
+  UserCubit(this._getUsers) : super(const UserState.initial());
+
+  Future<void> fetchUsers({String? query}) async {
+    emit(const UserState.loading());
+    try {
+      final users = await _getUsers(query: query);
+      emit(UserState.loaded(users));
+    } catch (e) {
+      emit(UserState.error(e.toString()));
+    }
+  }
+}
+
+\n
+===== C:\Works\github_user_explorer_demo\lib\features\users\presentation\cubit\user_state.dart =====
+import 'package:freezed_annotation/freezed_annotation.dart';
+import 'package:github_user_explorer/features/users/domain/entities/github_user.dart';
+
+part 'user_state.freezed.dart';
+
+@freezed
+class UserState with _$UserState {
+  const factory UserState.initial() = _Initial;
+  const factory UserState.loading() = _Loading;
+  const factory UserState.loaded(List<GithubUser> users) = _Loaded;
+  const factory UserState.error(String message) = _Error;
+}
+
+\n
+===== C:\Works\github_user_explorer_demo\lib\features\users\presentation\cubit\user_state.freezed.dart =====
+// coverage:ignore-file
+// GENERATED CODE - DO NOT MODIFY BY HAND
+// ignore_for_file: type=lint
+// ignore_for_file: unused_element, deprecated_member_use, deprecated_member_use_from_same_package, use_function_type_syntax_for_parameters, unnecessary_const, avoid_init_to_null, invalid_override_different_default_values_named, prefer_expression_function_bodies, annotate_overrides, invalid_annotation_target, unnecessary_question_mark
+
+part of 'user_state.dart';
+
+// **************************************************************************
+// FreezedGenerator
+// **************************************************************************
+
+T _$identity<T>(T value) => value;
+
+final _privateConstructorUsedError = UnsupportedError(
+    'It seems like you constructed your class using `MyClass._()`. This constructor is only meant to be used by freezed and you are not supposed to need it nor use it.\nPlease check the documentation here for more information: https://github.com/rrousselGit/freezed#adding-getters-and-methods-to-our-models');
+
+/// @nodoc
+mixin _$UserState {
+  @optionalTypeArgs
+  TResult when<TResult extends Object?>({
+    required TResult Function() initial,
+    required TResult Function() loading,
+    required TResult Function(List<GithubUser> users) loaded,
+    required TResult Function(String message) error,
+  }) =>
+      throw _privateConstructorUsedError;
+  @optionalTypeArgs
+  TResult? whenOrNull<TResult extends Object?>({
+    TResult? Function()? initial,
+    TResult? Function()? loading,
+    TResult? Function(List<GithubUser> users)? loaded,
+    TResult? Function(String message)? error,
+  }) =>
+      throw _privateConstructorUsedError;
+  @optionalTypeArgs
+  TResult maybeWhen<TResult extends Object?>({
+    TResult Function()? initial,
+    TResult Function()? loading,
+    TResult Function(List<GithubUser> users)? loaded,
+    TResult Function(String message)? error,
+    required TResult orElse(),
+  }) =>
+      throw _privateConstructorUsedError;
+  @optionalTypeArgs
+  TResult map<TResult extends Object?>({
+    required TResult Function(_Initial value) initial,
+    required TResult Function(_Loading value) loading,
+    required TResult Function(_Loaded value) loaded,
+    required TResult Function(_Error value) error,
+  }) =>
+      throw _privateConstructorUsedError;
+  @optionalTypeArgs
+  TResult? mapOrNull<TResult extends Object?>({
+    TResult? Function(_Initial value)? initial,
+    TResult? Function(_Loading value)? loading,
+    TResult? Function(_Loaded value)? loaded,
+    TResult? Function(_Error value)? error,
+  }) =>
+      throw _privateConstructorUsedError;
+  @optionalTypeArgs
+  TResult maybeMap<TResult extends Object?>({
+    TResult Function(_Initial value)? initial,
+    TResult Function(_Loading value)? loading,
+    TResult Function(_Loaded value)? loaded,
+    TResult Function(_Error value)? error,
+    required TResult orElse(),
+  }) =>
+      throw _privateConstructorUsedError;
+}
+
+/// @nodoc
+abstract class $UserStateCopyWith<$Res> {
+  factory $UserStateCopyWith(UserState value, $Res Function(UserState) then) =
+      _$UserStateCopyWithImpl<$Res, UserState>;
+}
+
+/// @nodoc
+class _$UserStateCopyWithImpl<$Res, $Val extends UserState>
+    implements $UserStateCopyWith<$Res> {
+  _$UserStateCopyWithImpl(this._value, this._then);
+
+  // ignore: unused_field
+  final $Val _value;
+  // ignore: unused_field
+  final $Res Function($Val) _then;
+
+  /// Create a copy of UserState
+  /// with the given fields replaced by the non-null parameter values.
+}
+
+/// @nodoc
+abstract class _$$InitialImplCopyWith<$Res> {
+  factory _$$InitialImplCopyWith(
+          _$InitialImpl value, $Res Function(_$InitialImpl) then) =
+      __$$InitialImplCopyWithImpl<$Res>;
+}
+
+/// @nodoc
+class __$$InitialImplCopyWithImpl<$Res>
+    extends _$UserStateCopyWithImpl<$Res, _$InitialImpl>
+    implements _$$InitialImplCopyWith<$Res> {
+  __$$InitialImplCopyWithImpl(
+      _$InitialImpl _value, $Res Function(_$InitialImpl) _then)
+      : super(_value, _then);
+
+  /// Create a copy of UserState
+  /// with the given fields replaced by the non-null parameter values.
+}
+
+/// @nodoc
+
+class _$InitialImpl implements _Initial {
+  const _$InitialImpl();
+
+  @override
+  String toString() {
+    return 'UserState.initial()';
+  }
+
+  @override
+  bool operator ==(Object other) {
+    return identical(this, other) ||
+        (other.runtimeType == runtimeType && other is _$InitialImpl);
+  }
+
+  @override
+  int get hashCode => runtimeType.hashCode;
+
+  @override
+  @optionalTypeArgs
+  TResult when<TResult extends Object?>({
+    required TResult Function() initial,
+    required TResult Function() loading,
+    required TResult Function(List<GithubUser> users) loaded,
+    required TResult Function(String message) error,
+  }) {
+    return initial();
+  }
+
+  @override
+  @optionalTypeArgs
+  TResult? whenOrNull<TResult extends Object?>({
+    TResult? Function()? initial,
+    TResult? Function()? loading,
+    TResult? Function(List<GithubUser> users)? loaded,
+    TResult? Function(String message)? error,
+  }) {
+    return initial?.call();
+  }
+
+  @override
+  @optionalTypeArgs
+  TResult maybeWhen<TResult extends Object?>({
+    TResult Function()? initial,
+    TResult Function()? loading,
+    TResult Function(List<GithubUser> users)? loaded,
+    TResult Function(String message)? error,
+    required TResult orElse(),
+  }) {
+    if (initial != null) {
+      return initial();
+    }
+    return orElse();
+  }
+
+  @override
+  @optionalTypeArgs
+  TResult map<TResult extends Object?>({
+    required TResult Function(_Initial value) initial,
+    required TResult Function(_Loading value) loading,
+    required TResult Function(_Loaded value) loaded,
+    required TResult Function(_Error value) error,
+  }) {
+    return initial(this);
+  }
+
+  @override
+  @optionalTypeArgs
+  TResult? mapOrNull<TResult extends Object?>({
+    TResult? Function(_Initial value)? initial,
+    TResult? Function(_Loading value)? loading,
+    TResult? Function(_Loaded value)? loaded,
+    TResult? Function(_Error value)? error,
+  }) {
+    return initial?.call(this);
+  }
+
+  @override
+  @optionalTypeArgs
+  TResult maybeMap<TResult extends Object?>({
+    TResult Function(_Initial value)? initial,
+    TResult Function(_Loading value)? loading,
+    TResult Function(_Loaded value)? loaded,
+    TResult Function(_Error value)? error,
+    required TResult orElse(),
+  }) {
+    if (initial != null) {
+      return initial(this);
+    }
+    return orElse();
+  }
+}
+
+abstract class _Initial implements UserState {
+  const factory _Initial() = _$InitialImpl;
+}
+
+/// @nodoc
+abstract class _$$LoadingImplCopyWith<$Res> {
+  factory _$$LoadingImplCopyWith(
+          _$LoadingImpl value, $Res Function(_$LoadingImpl) then) =
+      __$$LoadingImplCopyWithImpl<$Res>;
+}
+
+/// @nodoc
+class __$$LoadingImplCopyWithImpl<$Res>
+    extends _$UserStateCopyWithImpl<$Res, _$LoadingImpl>
+    implements _$$LoadingImplCopyWith<$Res> {
+  __$$LoadingImplCopyWithImpl(
+      _$LoadingImpl _value, $Res Function(_$LoadingImpl) _then)
+      : super(_value, _then);
+
+  /// Create a copy of UserState
+  /// with the given fields replaced by the non-null parameter values.
+}
+
+/// @nodoc
+
+class _$LoadingImpl implements _Loading {
+  const _$LoadingImpl();
+
+  @override
+  String toString() {
+    return 'UserState.loading()';
+  }
+
+  @override
+  bool operator ==(Object other) {
+    return identical(this, other) ||
+        (other.runtimeType == runtimeType && other is _$LoadingImpl);
+  }
+
+  @override
+  int get hashCode => runtimeType.hashCode;
+
+  @override
+  @optionalTypeArgs
+  TResult when<TResult extends Object?>({
+    required TResult Function() initial,
+    required TResult Function() loading,
+    required TResult Function(List<GithubUser> users) loaded,
+    required TResult Function(String message) error,
+  }) {
+    return loading();
+  }
+
+  @override
+  @optionalTypeArgs
+  TResult? whenOrNull<TResult extends Object?>({
+    TResult? Function()? initial,
+    TResult? Function()? loading,
+    TResult? Function(List<GithubUser> users)? loaded,
+    TResult? Function(String message)? error,
+  }) {
+    return loading?.call();
+  }
+
+  @override
+  @optionalTypeArgs
+  TResult maybeWhen<TResult extends Object?>({
+    TResult Function()? initial,
+    TResult Function()? loading,
+    TResult Function(List<GithubUser> users)? loaded,
+    TResult Function(String message)? error,
+    required TResult orElse(),
+  }) {
+    if (loading != null) {
+      return loading();
+    }
+    return orElse();
+  }
+
+  @override
+  @optionalTypeArgs
+  TResult map<TResult extends Object?>({
+    required TResult Function(_Initial value) initial,
+    required TResult Function(_Loading value) loading,
+    required TResult Function(_Loaded value) loaded,
+    required TResult Function(_Error value) error,
+  }) {
+    return loading(this);
+  }
+
+  @override
+  @optionalTypeArgs
+  TResult? mapOrNull<TResult extends Object?>({
+    TResult? Function(_Initial value)? initial,
+    TResult? Function(_Loading value)? loading,
+    TResult? Function(_Loaded value)? loaded,
+    TResult? Function(_Error value)? error,
+  }) {
+    return loading?.call(this);
+  }
+
+  @override
+  @optionalTypeArgs
+  TResult maybeMap<TResult extends Object?>({
+    TResult Function(_Initial value)? initial,
+    TResult Function(_Loading value)? loading,
+    TResult Function(_Loaded value)? loaded,
+    TResult Function(_Error value)? error,
+    required TResult orElse(),
+  }) {
+    if (loading != null) {
+      return loading(this);
+    }
+    return orElse();
+  }
+}
+
+abstract class _Loading implements UserState {
+  const factory _Loading() = _$LoadingImpl;
+}
+
+/// @nodoc
+abstract class _$$LoadedImplCopyWith<$Res> {
+  factory _$$LoadedImplCopyWith(
+          _$LoadedImpl value, $Res Function(_$LoadedImpl) then) =
+      __$$LoadedImplCopyWithImpl<$Res>;
+  @useResult
+  $Res call({List<GithubUser> users});
+}
+
+/// @nodoc
+class __$$LoadedImplCopyWithImpl<$Res>
+    extends _$UserStateCopyWithImpl<$Res, _$LoadedImpl>
+    implements _$$LoadedImplCopyWith<$Res> {
+  __$$LoadedImplCopyWithImpl(
+      _$LoadedImpl _value, $Res Function(_$LoadedImpl) _then)
+      : super(_value, _then);
+
+  /// Create a copy of UserState
+  /// with the given fields replaced by the non-null parameter values.
+  @pragma('vm:prefer-inline')
+  @override
+  $Res call({
+    Object? users = null,
+  }) {
+    return _then(_$LoadedImpl(
+      null == users
+          ? _value._users
+          : users // ignore: cast_nullable_to_non_nullable
+              as List<GithubUser>,
+    ));
+  }
+}
+
+/// @nodoc
+
+class _$LoadedImpl implements _Loaded {
+  const _$LoadedImpl(final List<GithubUser> users) : _users = users;
+
+  final List<GithubUser> _users;
+  @override
+  List<GithubUser> get users {
+    if (_users is EqualUnmodifiableListView) return _users;
+    // ignore: implicit_dynamic_type
+    return EqualUnmodifiableListView(_users);
+  }
+
+  @override
+  String toString() {
+    return 'UserState.loaded(users: $users)';
+  }
+
+  @override
+  bool operator ==(Object other) {
+    return identical(this, other) ||
+        (other.runtimeType == runtimeType &&
+            other is _$LoadedImpl &&
+            const DeepCollectionEquality().equals(other._users, _users));
+  }
+
+  @override
+  int get hashCode =>
+      Object.hash(runtimeType, const DeepCollectionEquality().hash(_users));
+
+  /// Create a copy of UserState
+  /// with the given fields replaced by the non-null parameter values.
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  @override
+  @pragma('vm:prefer-inline')
+  _$$LoadedImplCopyWith<_$LoadedImpl> get copyWith =>
+      __$$LoadedImplCopyWithImpl<_$LoadedImpl>(this, _$identity);
+
+  @override
+  @optionalTypeArgs
+  TResult when<TResult extends Object?>({
+    required TResult Function() initial,
+    required TResult Function() loading,
+    required TResult Function(List<GithubUser> users) loaded,
+    required TResult Function(String message) error,
+  }) {
+    return loaded(users);
+  }
+
+  @override
+  @optionalTypeArgs
+  TResult? whenOrNull<TResult extends Object?>({
+    TResult? Function()? initial,
+    TResult? Function()? loading,
+    TResult? Function(List<GithubUser> users)? loaded,
+    TResult? Function(String message)? error,
+  }) {
+    return loaded?.call(users);
+  }
+
+  @override
+  @optionalTypeArgs
+  TResult maybeWhen<TResult extends Object?>({
+    TResult Function()? initial,
+    TResult Function()? loading,
+    TResult Function(List<GithubUser> users)? loaded,
+    TResult Function(String message)? error,
+    required TResult orElse(),
+  }) {
+    if (loaded != null) {
+      return loaded(users);
+    }
+    return orElse();
+  }
+
+  @override
+  @optionalTypeArgs
+  TResult map<TResult extends Object?>({
+    required TResult Function(_Initial value) initial,
+    required TResult Function(_Loading value) loading,
+    required TResult Function(_Loaded value) loaded,
+    required TResult Function(_Error value) error,
+  }) {
+    return loaded(this);
+  }
+
+  @override
+  @optionalTypeArgs
+  TResult? mapOrNull<TResult extends Object?>({
+    TResult? Function(_Initial value)? initial,
+    TResult? Function(_Loading value)? loading,
+    TResult? Function(_Loaded value)? loaded,
+    TResult? Function(_Error value)? error,
+  }) {
+    return loaded?.call(this);
+  }
+
+  @override
+  @optionalTypeArgs
+  TResult maybeMap<TResult extends Object?>({
+    TResult Function(_Initial value)? initial,
+    TResult Function(_Loading value)? loading,
+    TResult Function(_Loaded value)? loaded,
+    TResult Function(_Error value)? error,
+    required TResult orElse(),
+  }) {
+    if (loaded != null) {
+      return loaded(this);
+    }
+    return orElse();
+  }
+}
+
+abstract class _Loaded implements UserState {
+  const factory _Loaded(final List<GithubUser> users) = _$LoadedImpl;
+
+  List<GithubUser> get users;
+
+  /// Create a copy of UserState
+  /// with the given fields replaced by the non-null parameter values.
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  _$$LoadedImplCopyWith<_$LoadedImpl> get copyWith =>
+      throw _privateConstructorUsedError;
+}
+
+/// @nodoc
+abstract class _$$ErrorImplCopyWith<$Res> {
+  factory _$$ErrorImplCopyWith(
+          _$ErrorImpl value, $Res Function(_$ErrorImpl) then) =
+      __$$ErrorImplCopyWithImpl<$Res>;
+  @useResult
+  $Res call({String message});
+}
+
+/// @nodoc
+class __$$ErrorImplCopyWithImpl<$Res>
+    extends _$UserStateCopyWithImpl<$Res, _$ErrorImpl>
+    implements _$$ErrorImplCopyWith<$Res> {
+  __$$ErrorImplCopyWithImpl(
+      _$ErrorImpl _value, $Res Function(_$ErrorImpl) _then)
+      : super(_value, _then);
+
+  /// Create a copy of UserState
+  /// with the given fields replaced by the non-null parameter values.
+  @pragma('vm:prefer-inline')
+  @override
+  $Res call({
+    Object? message = null,
+  }) {
+    return _then(_$ErrorImpl(
+      null == message
+          ? _value.message
+          : message // ignore: cast_nullable_to_non_nullable
+              as String,
+    ));
+  }
+}
+
+/// @nodoc
+
+class _$ErrorImpl implements _Error {
+  const _$ErrorImpl(this.message);
+
+  @override
+  final String message;
+
+  @override
+  String toString() {
+    return 'UserState.error(message: $message)';
+  }
+
+  @override
+  bool operator ==(Object other) {
+    return identical(this, other) ||
+        (other.runtimeType == runtimeType &&
+            other is _$ErrorImpl &&
+            (identical(other.message, message) || other.message == message));
+  }
+
+  @override
+  int get hashCode => Object.hash(runtimeType, message);
+
+  /// Create a copy of UserState
+  /// with the given fields replaced by the non-null parameter values.
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  @override
+  @pragma('vm:prefer-inline')
+  _$$ErrorImplCopyWith<_$ErrorImpl> get copyWith =>
+      __$$ErrorImplCopyWithImpl<_$ErrorImpl>(this, _$identity);
+
+  @override
+  @optionalTypeArgs
+  TResult when<TResult extends Object?>({
+    required TResult Function() initial,
+    required TResult Function() loading,
+    required TResult Function(List<GithubUser> users) loaded,
+    required TResult Function(String message) error,
+  }) {
+    return error(message);
+  }
+
+  @override
+  @optionalTypeArgs
+  TResult? whenOrNull<TResult extends Object?>({
+    TResult? Function()? initial,
+    TResult? Function()? loading,
+    TResult? Function(List<GithubUser> users)? loaded,
+    TResult? Function(String message)? error,
+  }) {
+    return error?.call(message);
+  }
+
+  @override
+  @optionalTypeArgs
+  TResult maybeWhen<TResult extends Object?>({
+    TResult Function()? initial,
+    TResult Function()? loading,
+    TResult Function(List<GithubUser> users)? loaded,
+    TResult Function(String message)? error,
+    required TResult orElse(),
+  }) {
+    if (error != null) {
+      return error(message);
+    }
+    return orElse();
+  }
+
+  @override
+  @optionalTypeArgs
+  TResult map<TResult extends Object?>({
+    required TResult Function(_Initial value) initial,
+    required TResult Function(_Loading value) loading,
+    required TResult Function(_Loaded value) loaded,
+    required TResult Function(_Error value) error,
+  }) {
+    return error(this);
+  }
+
+  @override
+  @optionalTypeArgs
+  TResult? mapOrNull<TResult extends Object?>({
+    TResult? Function(_Initial value)? initial,
+    TResult? Function(_Loading value)? loading,
+    TResult? Function(_Loaded value)? loaded,
+    TResult? Function(_Error value)? error,
+  }) {
+    return error?.call(this);
+  }
+
+  @override
+  @optionalTypeArgs
+  TResult maybeMap<TResult extends Object?>({
+    TResult Function(_Initial value)? initial,
+    TResult Function(_Loading value)? loading,
+    TResult Function(_Loaded value)? loaded,
+    TResult Function(_Error value)? error,
+    required TResult orElse(),
+  }) {
+    if (error != null) {
+      return error(this);
+    }
+    return orElse();
+  }
+}
+
+abstract class _Error implements UserState {
+  const factory _Error(final String message) = _$ErrorImpl;
+
+  String get message;
+
+  /// Create a copy of UserState
+  /// with the given fields replaced by the non-null parameter values.
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  _$$ErrorImplCopyWith<_$ErrorImpl> get copyWith =>
+      throw _privateConstructorUsedError;
+}
+
+\n
+===== C:\Works\github_user_explorer_demo\lib\features\users\presentation\pages\user_detail_page.dart =====
+import 'package:flutter/material.dart';
+
+class UserDetailPage extends StatelessWidget {
+  final String id;
+  final String login;
+  final String avatarUrl;
+
+  const UserDetailPage({
+    super.key,
+    required this.id,
+    required this.login,
+    required this.avatarUrl,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('User Detail: $login'),
+      ),
+      body: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.start,
+          children: [
+            CircleAvatar(
+              radius: 40,
+              backgroundImage: NetworkImage(avatarUrl),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              login,
+              style: Theme.of(context).textTheme.headlineSmall,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'User ID: $id',
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+            const SizedBox(height: 24),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text("Go Back"),
+            )
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+\n
+===== C:\Works\github_user_explorer_demo\lib\features\users\presentation\pages\user_list_page.dart =====
+import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:github_user_explorer/features/users/presentation/cubit/user_cubit.dart';
+import 'package:github_user_explorer/features/users/presentation/cubit/user_state.dart';
+import 'package:github_user_explorer/features/users/presentation/widgets/EmptyState.dart';
+import 'package:github_user_explorer/features/users/presentation/widgets/ErrorState.dart';
+import 'package:github_user_explorer/features/users/presentation/widgets/LoadingIndicator.dart';
+import 'package:github_user_explorer/features/users/presentation/widgets/UserCard.dart';
+import 'package:github_user_explorer/l10n/app_localizations.dart';
+
+class UserListPage extends StatefulWidget {
+  const UserListPage({super.key});
+
+  @override
+  State<UserListPage> createState() => _UserListPageState();
+}
+
+class _UserListPageState extends State<UserListPage> {
+  final _controller = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    context.read<UserCubit>().fetchUsers();
+  }
+
+  void _onSearch() {
+    context.read<UserCubit>().fetchUsers(query: _controller.text);
+  }
+
+  void _onSubmit(String value) {
+    context.read<UserCubit>().fetchUsers(query: value);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+
+    return Scaffold(
+      appBar: AppBar(title: Text(l10n!.usersTitle)),
+      body: Column(
+        children: [
+          // SEARCH BAR
+          Padding(
+            padding: const EdgeInsets.all(8.0),
+            child: TextField(
+              controller: _controller,
+              decoration: InputDecoration(
+                hintText: l10n.searchHint,
+                suffixIcon: IconButton(
+                  icon: const Icon(Icons.search),
+                  onPressed: _onSearch,
+                ),
+              ),
+              onSubmitted: _onSubmit,
+            ),
+          ),
+
+          // STATE HANDLER
+          Expanded(
+            child: BlocBuilder<UserCubit, UserState>(
+              builder: (context, state) {
+                return state.when(
+                  initial: () => const EmptyStateWidget(),
+
+                  loading: () => const LoadingIndicator(),
+
+                  loaded: (users) {
+                    return LayoutBuilder(
+                      builder: (context, constraints) {
+                        final isWide = constraints.maxWidth > 600;
+
+                        // GRID UI FOR LARGE SCREEN
+                        if (isWide) {
+                          return GridView.builder(
+                            padding: const EdgeInsets.all(8),
+                            gridDelegate:
+                                const SliverGridDelegateWithFixedCrossAxisCount(
+                              crossAxisCount: 2,
+                              childAspectRatio: 3,
+                              crossAxisSpacing: 8,
+                              mainAxisSpacing: 8,
+                            ),
+                            itemCount: users.length,
+                            itemBuilder: (_, index) =>
+                                UserCard(user: users[index]),
+                          );
+                        }
+
+                        // LIST UI FOR MOBILE
+                        return ListView.builder(
+                          padding: const EdgeInsets.all(8),
+                          itemCount: users.length,
+                          itemBuilder: (_, index) =>
+                              UserCard(user: users[index]),
+                        );
+                      },
+                    );
+                  },
+
+                  error: (message) => Center(
+                    child: ErrorMessageWidget(
+                      errorText: l10n.errorState,
+                      details: message,
+                      onRetry: () =>
+                          context.read<UserCubit>().fetchUsers(),
+                      retryText: l10n.retry,
+                      textStyle: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+\n
+===== C:\Works\github_user_explorer_demo\lib\features\users\presentation\widgets\EmptyState.dart =====
+import 'package:flutter/material.dart';
+import 'package:github_user_explorer/l10n/app_localizations.dart';
+class EmptyStateWidget extends StatelessWidget {
+  const EmptyStateWidget({super.key});
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    return Center(child: Text(l10n!.emptyState));
+  }
+}
+\n
+===== C:\Works\github_user_explorer_demo\lib\features\users\presentation\widgets\ErrorState.dart =====
+import 'package:flutter/material.dart';
+class ErrorMessageWidget extends StatelessWidget {
+  final String errorText;
+  final String details;
+  final VoidCallback onRetry;
+  final String retryText;
+  final TextStyle? textStyle;
+  const ErrorMessageWidget({
+    super.key,
+    required this.errorText,
+    required this.details,
+    required this.onRetry,
+    this.retryText = "Retry",
+    this.textStyle,
+  });
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(errorText),
+        Text(details, style: textStyle),
+        const SizedBox(height: 8),
+        ElevatedButton(
+          onPressed: onRetry,
+          child: Text(retryText),
+        ),
+      ],
+    );
+  }
+}
+\n
+===== C:\Works\github_user_explorer_demo\lib\features\users\presentation\widgets\LoadingIndicator.dart =====
+import 'package:flutter/material.dart';
+class LoadingIndicator extends StatelessWidget {
+  const LoadingIndicator({super.key});
+  @override
+  Widget build(BuildContext context) {
+    return const Center(child: CircularProgressIndicator());
+  }
+}
+\n
+===== C:\Works\github_user_explorer_demo\lib\features\users\presentation\widgets\UserCard.dart =====
+import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
+import 'package:github_user_explorer/features/users/domain/entities/github_user.dart';
+
+class UserCard extends StatelessWidget {
+  final GithubUser user;
+
+  const UserCard({super.key, required this.user});
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: ListTile(
+        leading: CircleAvatar(backgroundImage: NetworkImage(user.avatarUrl)),
+        title: Text(user.login),
+        subtitle: Text(user.htmlUrl),
+        trailing: const Icon(Icons.chevron_right),
+        onTap: () {
+          context.push(
+            '/detail/${user.id}?login=${user.login}&avatar=${user.avatarUrl}',
+          );
+        },
+      ),
+    );
+  }
+}
+
+\n
+===== C:\Works\github_user_explorer_demo\lib\l10n\app_en.arb =====
+{
+  "@@locale": "en",
+  "appTitle": "GitHub User Explorer",
+  "usersTitle": "GitHub Users",
+  "retry": "Retry",
+  "searchHint": "Search GitHub username...",
+  "emptyState": "No users yet. Try searching.",
+  "errorState": "Something went wrong",
+  "details": "Details"
+}
+
+\n
+===== C:\Works\github_user_explorer_demo\lib\l10n\app_localizations.dart =====
+import 'dart:async';
+
+import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:intl/intl.dart' as intl;
+
+import 'app_localizations_en.dart';
+import 'app_localizations_vi.dart';
+
+// ignore_for_file: type=lint
+
+/// Callers can lookup localized strings with an instance of AppLocalizations
+/// returned by `AppLocalizations.of(context)`.
+///
+/// Applications need to include `AppLocalizations.delegate()` in their app's
+/// `localizationDelegates` list, and the locales they support in the app's
+/// `supportedLocales` list. For example:
+///
+/// ```dart
+/// import 'l10n/app_localizations.dart';
+///
+/// return MaterialApp(
+///   localizationsDelegates: AppLocalizations.localizationsDelegates,
+///   supportedLocales: AppLocalizations.supportedLocales,
+///   home: MyApplicationHome(),
+/// );
+/// ```
+///
+/// ## Update pubspec.yaml
+///
+/// Please make sure to update your pubspec.yaml to include the following
+/// packages:
+///
+/// ```yaml
+/// dependencies:
+///   # Internationalization support.
+///   flutter_localizations:
+///     sdk: flutter
+///   intl: any # Use the pinned version from flutter_localizations
+///
+///   # Rest of dependencies
+/// ```
+///
+/// ## iOS Applications
+///
+/// iOS applications define key application metadata, including supported
+/// locales, in an Info.plist file that is built into the application bundle.
+/// To configure the locales supported by your app, you’ll need to edit this
+/// file.
+///
+/// First, open your project’s ios/Runner.xcworkspace Xcode workspace file.
+/// Then, in the Project Navigator, open the Info.plist file under the Runner
+/// project’s Runner folder.
+///
+/// Next, select the Information Property List item, select Add Item from the
+/// Editor menu, then select Localizations from the pop-up menu.
+///
+/// Select and expand the newly-created Localizations item then, for each
+/// locale your application supports, add a new item and select the locale
+/// you wish to add from the pop-up menu in the Value field. This list should
+/// be consistent with the languages listed in the AppLocalizations.supportedLocales
+/// property.
+abstract class AppLocalizations {
+  AppLocalizations(String locale)
+      : localeName = intl.Intl.canonicalizedLocale(locale.toString());
+
+  final String localeName;
+
+  static AppLocalizations? of(BuildContext context) {
+    return Localizations.of<AppLocalizations>(context, AppLocalizations);
+  }
+
+  static const LocalizationsDelegate<AppLocalizations> delegate =
+      _AppLocalizationsDelegate();
+
+  /// A list of this localizations delegate along with the default localizations
+  /// delegates.
+  ///
+  /// Returns a list of localizations delegates containing this delegate along with
+  /// GlobalMaterialLocalizations.delegate, GlobalCupertinoLocalizations.delegate,
+  /// and GlobalWidgetsLocalizations.delegate.
+  ///
+  /// Additional delegates can be added by appending to this list in
+  /// MaterialApp. This list does not have to be used at all if a custom list
+  /// of delegates is preferred or required.
+  static const List<LocalizationsDelegate<dynamic>> localizationsDelegates =
+      <LocalizationsDelegate<dynamic>>[
+    delegate,
+    GlobalMaterialLocalizations.delegate,
+    GlobalCupertinoLocalizations.delegate,
+    GlobalWidgetsLocalizations.delegate,
+  ];
+
+  /// A list of this localizations delegate's supported locales.
+  static const List<Locale> supportedLocales = <Locale>[
+    Locale('en'),
+    Locale('vi')
+  ];
+
+  /// No description provided for @appTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'GitHub User Explorer'**
+  String get appTitle;
+
+  /// No description provided for @usersTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'GitHub Users'**
+  String get usersTitle;
+
+  /// No description provided for @retry.
+  ///
+  /// In en, this message translates to:
+  /// **'Retry'**
+  String get retry;
+
+  /// No description provided for @searchHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Search GitHub username...'**
+  String get searchHint;
+
+  /// No description provided for @emptyState.
+  ///
+  /// In en, this message translates to:
+  /// **'No users yet. Try searching.'**
+  String get emptyState;
+
+  /// No description provided for @errorState.
+  ///
+  /// In en, this message translates to:
+  /// **'Something went wrong'**
+  String get errorState;
+
+  /// No description provided for @details.
+  ///
+  /// In en, this message translates to:
+  /// **'Details'**
+  String get details;
+}
+
+class _AppLocalizationsDelegate
+    extends LocalizationsDelegate<AppLocalizations> {
+  const _AppLocalizationsDelegate();
+
+  @override
+  Future<AppLocalizations> load(Locale locale) {
+    return SynchronousFuture<AppLocalizations>(lookupAppLocalizations(locale));
+  }
+
+  @override
+  bool isSupported(Locale locale) =>
+      <String>['en', 'vi'].contains(locale.languageCode);
+
+  @override
+  bool shouldReload(_AppLocalizationsDelegate old) => false;
+}
+
+AppLocalizations lookupAppLocalizations(Locale locale) {
+  // Lookup logic when only language code is specified.
+  switch (locale.languageCode) {
+    case 'en':
+      return AppLocalizationsEn();
+    case 'vi':
+      return AppLocalizationsVi();
+  }
+
+  throw FlutterError(
+      'AppLocalizations.delegate failed to load unsupported locale "$locale". This is likely '
+      'an issue with the localizations generation tool. Please file an issue '
+      'on GitHub with a reproducible sample app and the gen-l10n configuration '
+      'that was used.');
+}
+
+\n
+===== C:\Works\github_user_explorer_demo\lib\l10n\app_localizations_en.dart =====
+// ignore: unused_import
+import 'package:intl/intl.dart' as intl;
+import 'app_localizations.dart';
+
+// ignore_for_file: type=lint
+
+/// The translations for English (`en`).
+class AppLocalizationsEn extends AppLocalizations {
+  AppLocalizationsEn([String locale = 'en']) : super(locale);
+
+  @override
+  String get appTitle => 'GitHub User Explorer';
+
+  @override
+  String get usersTitle => 'GitHub Users';
+
+  @override
+  String get retry => 'Retry';
+
+  @override
+  String get searchHint => 'Search GitHub username...';
+
+  @override
+  String get emptyState => 'No users yet. Try searching.';
+
+  @override
+  String get errorState => 'Something went wrong';
+
+  @override
+  String get details => 'Details';
+}
+
+\n
+===== C:\Works\github_user_explorer_demo\lib\l10n\app_localizations_vi.dart =====
+// ignore: unused_import
+import 'package:intl/intl.dart' as intl;
+import 'app_localizations.dart';
+
+// ignore_for_file: type=lint
+
+/// The translations for Vietnamese (`vi`).
+class AppLocalizationsVi extends AppLocalizations {
+  AppLocalizationsVi([String locale = 'vi']) : super(locale);
+
+  @override
+  String get appTitle => 'Khám phá người dùng GitHub';
+
+  @override
+  String get usersTitle => 'Danh sách GitHub';
+
+  @override
+  String get retry => 'Thử lại';
+
+  @override
+  String get searchHint => 'Tìm username GitHub...';
+
+  @override
+  String get emptyState => 'Chưa có dữ liệu. Hãy tìm thử.';
+
+  @override
+  String get errorState => 'Có lỗi xảy ra';
+
+  @override
+  String get details => 'Chi tiết';
+}
+
+\n
+===== C:\Works\github_user_explorer_demo\lib\l10n\app_vi.arb =====
+{
+  "@@locale": "vi",
+  "appTitle": "Khám phá người dùng GitHub",
+  "usersTitle": "Danh sách GitHub",
+  "retry": "Thử lại",
+  "searchHint": "Tìm username GitHub...",
+  "emptyState": "Chưa có dữ liệu. Hãy tìm thử.",
+  "errorState": "Có lỗi xảy ra",
+  "details": "Chi tiết"
+}
+
+\n
+===== C:\Works\github_user_explorer_demo\lib\app.dart =====
+import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:github_user_explorer/core/di/injection.dart';
+import 'package:github_user_explorer/core/router/app_router.dart';
+import 'package:github_user_explorer/core/theme/app_theme.dart';
+import 'package:github_user_explorer/core/utils/app_config.dart';
+import 'package:github_user_explorer/features/users/domain/repositories/github_user_repository.dart';
+import 'package:github_user_explorer/features/users/domain/usecases/get_users.dart';
+import 'package:github_user_explorer/features/users/presentation/cubit/user_cubit.dart';
+import 'package:github_user_explorer/l10n/app_localizations.dart';
+
+class MyApp extends StatelessWidget {
+  const MyApp({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final config = AppConfig.of(context);
+
+    return MultiBlocProvider(
+      providers: [
+        BlocProvider(
+          create: (_) => UserCubit(getIt<GithubUserRepository>()),
+        ),
+      ],
+      child: MaterialApp.router(
+        title: 'GitHub User Explorer',
+        debugShowCheckedModeBanner: false,
+        theme: AppTheme.light,
+        darkTheme: AppTheme.dark,
+        themeMode: ThemeMode.system,
+        routerConfig: appRouter,
+        localizationsDelegates: const [
+          AppLocalizations.delegate,
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
+        supportedLocales: AppLocalizations.supportedLocales,
+      ),
+    );
+  }
+}
+
+\n
+
+\n
+===== C:\Works\github_user_explorer_demo\lib\main.dart =====
+import 'dart:async';
+import 'package:flutter/material.dart';
+import 'package:github_user_explorer/app.dart';
+import 'package:github_user_explorer/core/di/injection.dart';
+import 'package:github_user_explorer/core/utils/app_config.dart';
+
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  /// 🔥 Global Flutter Error Handler
+  FlutterError.onError = (FlutterErrorDetails details) {
+    debugPrint("🔥 Flutter Error: ${details.exception}");
+  };
+
+  /// 🔥 Global Zone Error Handler
+  runZonedGuarded(() async {
+    const flavor = String.fromEnvironment('FLAVOR', defaultValue: 'DEV');
+    const baseUrl = 'https://api.github.com';
+
+    /// Bạn đang dùng theme trong AppConfig → giữ lại
+    final theme = switch (flavor) {
+      'PROD' => ThemeData.dark(useMaterial3: true).copyWith(
+          colorScheme: ColorScheme.fromSeed(seedColor: Colors.orange),
+        ),
+      _ => ThemeData.light(useMaterial3: true).copyWith(
+          colorScheme: ColorScheme.fromSeed(seedColor: Colors.indigo),
+        ),
+    };
+
+    final config = AppConfig(
+      baseUrl: baseUrl,
+      flavor: flavor,
+      theme: theme,
+      useMockRepo: false,
+      child: const MyApp(),
+    );
+
+    await setupDependencies(config);
+
+    runApp(config);
+  }, (error, stack) {
+    debugPrint("🔥 Uncaught Zone Error: $error");
+  });
+}
+
+\n
+===== C:\Works\github_user_explorer_demo\lib\core\di\injection.dart =====
+import 'package:dio/dio.dart';
+import 'package:get_it/get_it.dart';
+
+import '../../features/users/data/github_user_remote_data_source.dart';
+import '../../features/users/data/repositories/github_user_repository_impl.dart';
+import '../../features/users/data/repositories/github_user_repository_mock.dart';
+import '../../features/users/domain/repositories/github_user_repository.dart';
+import '../../features/users/domain/usecases/get_users.dart';
+import '../../features/users/presentation/cubit/user_cubit.dart';
+import '../network/app_http_client.dart';
+import '../utils/app_config.dart';
+
+final GetIt getIt = GetIt.instance;
+
+Future<void> setupDependencies(AppConfig config) async {
+  // 1. Config
+  getIt.registerSingleton<AppConfig>(config);
+
+  // 2. Dio client (baseUrl + timeout + logging)
+  final dio = Dio(
+    BaseOptions(
+      baseUrl: config.baseUrl,
+      connectTimeout: const Duration(seconds: 10),
+      receiveTimeout: const Duration(seconds: 10),
+    ),
+  )..interceptors.add(LogInterceptor(responseBody: true));
+
+  // 3. AppHttpClient
+  getIt.registerLazySingleton<AppHttpClient>(() => AppHttpClient(dio));
+
+  // 4. Remote DataSource
+  getIt.registerLazySingleton<GithubUserRemoteDataSource>(
+    () => GithubUserRemoteDataSourceImpl(getIt<AppHttpClient>()),
+  );
+
+  // 5. Repository
+  getIt.registerLazySingleton<GithubUserRepository>(
+    () => config.useMockRepo
+        ? GithubUserRepositoryMock()
+        : GithubUserRepositoryImpl(getIt<GithubUserRemoteDataSource>()),
+  );
+
+  // 6. UseCase
+  getIt.registerLazySingleton<GetUsers>(
+    () => GetUsers(getIt<GithubUserRepository>()),
+  );
+
+  // 7. Cubit
+  getIt.registerFactory<UserCubit>(
+    () => UserCubit(getIt<GithubUserRepository>()),
+  );
+}
+
+\n
+===== C:\Works\github_user_explorer_demo\lib\core\errors\app_exception.dart =====
+class AppException implements Exception {
+  final String message;
+  AppException(this.message);
+  @override
+  String toString() => 'AppException: $message';
+}
+
+\n
+===== C:\Works\github_user_explorer_demo\lib\core\network\api_result.dart =====
+import 'package:dio/dio.dart';
+import 'package:github_user_explorer/core/errors/app_exception.dart';
+
+class ApiResult<T> {
+  final T? data;
+  final String? error;
+
+  const ApiResult._({this.data, this.error});
+
+  bool get isSuccess => data != null;
+
+  factory ApiResult.success(T data) => ApiResult._(data: data);
+
+  factory ApiResult.failure(String error) => ApiResult._(error: error);
+}
+
+class AppHttpClientResult {
+  final Dio _dio;
+
+  AppHttpClientResult(this._dio);
+
+  Future<ApiResult<Response>> get(
+    String path, {
+    Map<String, dynamic>? queryParameters,
+  }) async {
+    try {
+      final res = await _dio.get(path, queryParameters: queryParameters);
+      return ApiResult.success(res);
+    } on DioException catch (e) {
+      throw AppException(e.message ?? "Network error");
+    }
+  }
+}
+
+\n
+===== C:\Works\github_user_explorer_demo\lib\core\network\app_http_client.dart =====
+import 'package:dio/dio.dart';
+
+class AppHttpClient {
+  final Dio dio;
+
+  AppHttpClient(this.dio);
+
+  Future<Response> get(
+    String path, {
+    Map<String, dynamic>? queryParameters,
+  }) async {
+    return dio.get(path, queryParameters: queryParameters);
+  }
+
+  Future<Response> post(
+    String path, {
+    dynamic data,
+    Map<String, dynamic>? queryParameters,
+  }) async {
+    return dio.post(path, data: data, queryParameters: queryParameters);
+  }
+}
+
+\n
+===== C:\Works\github_user_explorer_demo\lib\core\network\app_interceptor.dart =====
+import 'dart:developer';
+import 'package:dio/dio.dart';
+
+class AppInterceptor extends Interceptor {
+  final Dio dio;
+
+  AppInterceptor(this.dio);
+
+  @override
+  void onRequest(RequestOptions options, RequestInterceptorHandler handler) {
+    log(
+      '-- REQUEST --\n'
+      'URL: ${options.uri}\n'
+      'Method: ${options.method}\n'
+      'Headers: ${options.headers}\n'
+      'Data: ${options.data}',
+      name: 'HTTP',
+    );
+
+    // Ví dụ: thêm token nếu có
+    // options.headers['Authorization'] = 'Bearer YOUR_TOKEN';
+
+    super.onRequest(options, handler);
+  }
+
+  @override
+  void onResponse(Response response, ResponseInterceptorHandler handler) {
+    log(
+      '-- RESPONSE --\n'
+      'URL: ${response.realUri}\n'
+      'Status: ${response.statusCode}\n'
+      'Data: ${response.data}',
+      name: 'HTTP',
+    );
+
+    super.onResponse(response, handler);
+  }
+
+  @override
+  void onError(DioException err, ErrorInterceptorHandler handler) async {
+    log(
+      '-- ERROR --\n'
+      'TYPE: ${err.type}\n'
+      'URL: ${err.requestOptions.uri}\n'
+      'Message: ${err.message}',
+      name: 'HTTP',
+    );
+
+    // Nếu lỗi 401 -> refresh token (giả lập)
+    if (err.response?.statusCode == 401) {
+      try {
+        log('Refreshing token...', name: 'HTTP');
+
+        // 🔥 TẠO TOKEN MỚI (ví dụ demo)
+        final newToken = await _fakeRefreshToken();
+
+        // Gắn lại token vào header
+        err.requestOptions.headers['Authorization'] = 'Bearer $newToken';
+
+        // Retry request với token mới
+        final retryResponse =
+            await dio.fetch(err.requestOptions);
+
+        return handler.resolve(retryResponse);
+      } catch (_) {
+        log('Token refresh failed', name: 'HTTP');
+      }
+    }
+
+    // Retry nếu lỗi timeout hoặc network (tối đa 1 lần)
+    if (err.type == DioExceptionType.connectionTimeout ||
+        err.type == DioExceptionType.receiveTimeout ||
+        err.type == DioExceptionType.sendTimeout) {
+      try {
+        log('Retrying request...', name: 'HTTP');
+        final retryResponse = await dio.fetch(err.requestOptions);
+        return handler.resolve(retryResponse);
+      } catch (_) {
+        log('Retry failed', name: 'HTTP');
+      }
+    }
+
+    return handler.next(err);
+  }
+
+  /// Fake refresh token (demo) — bạn có thể sửa lại tuỳ app của bạn
+  Future<String> _fakeRefreshToken() async {
+    await Future.delayed(const Duration(milliseconds: 500));
+    return 'NEW_TOKEN_ABC123';
+  }
+}
+
+\n
+===== C:\Works\github_user_explorer_demo\lib\core\network\base_repository.dart =====
+import 'package:dio/dio.dart';
+import 'package:github_user_explorer/core/errors/app_exception.dart';
+import 'base_response.dart';
+import 'error_mapper.dart';
+
+class BaseRepository {
+  final Dio dio;
+
+  BaseRepository(this.dio);
+
+  Future<BaseResponse<T>> safeApiCall<T>(
+    Future<dynamic> Function() call,
+    T Function(dynamic json) mapper,
+  ) async {
+    try {
+      final result = await call();
+
+      /// Nếu DataSource trả Response
+      if (result is Response) {
+        return BaseResponse<T>(data: mapper(result.data));
+      }
+
+      /// Nếu DataSource trả raw JSON
+      return BaseResponse<T>(data: mapper(result));
+    } catch (error) {
+      final msg = ErrorMapper.toMessage(error);
+      return BaseResponse<T>(error: msg);
+    }
+  }
+}
+
+\n
+===== C:\Works\github_user_explorer_demo\lib\core\network\base_response.dart =====
+class BaseResponse<T> {
+  final T? data;
+  final String? error;
+
+  BaseResponse({this.data, this.error});
+
+  bool get hasError => error != null;
+}
+
+\n
+===== C:\Works\github_user_explorer_demo\lib\core\network\error_mapper.dart =====
+import 'package:dio/dio.dart';
+
+class ErrorMapper {
+  static String toMessage(dynamic error) {
+    if (error is DioException) {
+      switch (error.type) {
+        case DioExceptionType.connectionTimeout:
+        case DioExceptionType.sendTimeout:
+        case DioExceptionType.receiveTimeout:
+          return "Kết nối tới máy chủ quá hạn.";
+
+        case DioExceptionType.badResponse:
+          final status = error.response?.statusCode;
+          if (status == 401) return "Bạn không có quyền truy cập.";
+          if (status == 404) return "Không tìm thấy tài nguyên.";
+          if (status == 500) return "Lỗi máy chủ. Vui lòng thử lại.";
+          return "Lỗi máy chủ ($status).";
+
+        case DioExceptionType.unknown:
+          return "Không có kết nối Internet.";
+
+        default:
+          return "Đã xảy ra lỗi không xác định.";
+      }
+    }
+
+    return error.toString();
+  }
+}
+
+\n
+===== C:\Works\github_user_explorer_demo\lib\core\router\app_router.dart =====
+import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
+import 'package:github_user_explorer/features/users/presentation/pages/user_list_page.dart';
+import 'package:github_user_explorer/features/users/presentation/pages/user_detail_page.dart';
+
+final appRouter = GoRouter(
+  routes: [
+    GoRoute(
+      path: '/',
+      builder: (context, state) => const UserListPage(),
+    ),
+    GoRoute(
+      path: '/detail/:id',
+      builder: (context, state) {
+        final id = state.pathParameters['id']!;
+        final login = state.uri.queryParameters['login']!;
+        final avatar = state.uri.queryParameters['avatar']!;
+
+        return UserDetailPage(
+          id: id,
+          login: login,
+          avatarUrl: avatar,
+        );
+      },
+    ),
+  ],
+);
+
+\n
+===== C:\Works\github_user_explorer_demo\lib\core\theme\app_theme.dart =====
+import 'package:flutter/material.dart';
+
+class AppTheme {
+  static ThemeData get light => ThemeData(
+        brightness: Brightness.light,
+        primarySwatch: Colors.blue,
+        scaffoldBackgroundColor: Colors.white,
+        appBarTheme: const AppBarTheme(
+          backgroundColor: Colors.blue,
+          foregroundColor: Colors.white,
+        ),
+      );
+
+  static ThemeData get dark => ThemeData(
+        brightness: Brightness.dark,
+        scaffoldBackgroundColor: Colors.black,
+        appBarTheme: const AppBarTheme(
+          backgroundColor: Colors.black,
+          foregroundColor: Colors.white,
+        ),
+      );
+}
+
+\n
+===== C:\Works\github_user_explorer_demo\lib\core\utils\app_config.dart =====
+\n
+===== C:\Works\github_user_explorer_demo\lib\features\users\data\github_user_remote_data_source.dart =====
+import 'package:github_user_explorer/core/network/app_http_client.dart';
+import 'package:dio/dio.dart';
+
+abstract class GithubUserRemoteDataSource {
+  AppHttpClient get client;
+
+  Future<Response> getUsers({String? query});
+}
+
+class GithubUserRemoteDataSourceImpl implements GithubUserRemoteDataSource {
+  @override
+  final AppHttpClient client;
+
+  GithubUserRemoteDataSourceImpl(this.client);
+
+  @override
+  Future<Response> getUsers({String? query}) {
+    return client.get(
+      '/search/users',
+      queryParameters: (query != null && query.isNotEmpty)
+          ? {'q': query}
+          : {'q': 'flutter'},
+    );
+  }
+}
+
+\n
+===== C:\Works\github_user_explorer_demo\lib\features\users\data\models\github_user_model.dart =====
+import 'package:freezed_annotation/freezed_annotation.dart';
+import 'package:github_user_explorer/features/users/domain/entities/github_user.dart';
+
+part 'github_user_model.freezed.dart';
+part 'github_user_model.g.dart';
+
+@freezed
+class GithubUserModel with _$GithubUserModel {
+  const factory GithubUserModel({
+    required int id,
+    required String login,
+    @JsonKey(name: 'avatar_url') required String avatarUrl,
+    @JsonKey(name: 'html_url') required String htmlUrl,
+  }) = _GithubUserModel;
+
+  factory GithubUserModel.fromJson(Map<String, dynamic> json) =>
+      _$GithubUserModelFromJson(json);
+}
+
+extension GithubUserModelMapper on GithubUserModel {
+  GithubUser toEntity() => GithubUser(
+        id: id,
+        login: login,
+        avatarUrl: avatarUrl,
+        htmlUrl: htmlUrl,
+      );
+
+  static GithubUserModel fromEntity(GithubUser user) =>
+      GithubUserModel(
+        id: user.id,
+        login: user.login,
+        avatarUrl: user.avatarUrl,
+        htmlUrl: user.htmlUrl,
+      );
+}
+
+\n
+===== C:\Works\github_user_explorer_demo\lib\features\users\data\models\github_user_model.freezed.dart =====
+// coverage:ignore-file
+// GENERATED CODE - DO NOT MODIFY BY HAND
+// ignore_for_file: type=lint
+// ignore_for_file: unused_element, deprecated_member_use, deprecated_member_use_from_same_package, use_function_type_syntax_for_parameters, unnecessary_const, avoid_init_to_null, invalid_override_different_default_values_named, prefer_expression_function_bodies, annotate_overrides, invalid_annotation_target, unnecessary_question_mark
+
+part of 'github_user_model.dart';
+
+// **************************************************************************
+// FreezedGenerator
+// **************************************************************************
+
+T _$identity<T>(T value) => value;
+
+final _privateConstructorUsedError = UnsupportedError(
+    'It seems like you constructed your class using `MyClass._()`. This constructor is only meant to be used by freezed and you are not supposed to need it nor use it.\nPlease check the documentation here for more information: https://github.com/rrousselGit/freezed#adding-getters-and-methods-to-our-models');
+
+GithubUserModel _$GithubUserModelFromJson(Map<String, dynamic> json) {
+  return _GithubUserModel.fromJson(json);
+}
+
+/// @nodoc
+mixin _$GithubUserModel {
+  int get id => throw _privateConstructorUsedError;
+  String get login => throw _privateConstructorUsedError;
+  @JsonKey(name: 'avatar_url')
+  String get avatarUrl => throw _privateConstructorUsedError;
+  @JsonKey(name: 'html_url')
+  String get htmlUrl => throw _privateConstructorUsedError;
+
+  /// Serializes this GithubUserModel to a JSON map.
+  Map<String, dynamic> toJson() => throw _privateConstructorUsedError;
+
+  /// Create a copy of GithubUserModel
+  /// with the given fields replaced by the non-null parameter values.
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  $GithubUserModelCopyWith<GithubUserModel> get copyWith =>
+      throw _privateConstructorUsedError;
+}
+
+/// @nodoc
+abstract class $GithubUserModelCopyWith<$Res> {
+  factory $GithubUserModelCopyWith(
+          GithubUserModel value, $Res Function(GithubUserModel) then) =
+      _$GithubUserModelCopyWithImpl<$Res, GithubUserModel>;
+  @useResult
+  $Res call(
+      {int id,
+      String login,
+      @JsonKey(name: 'avatar_url') String avatarUrl,
+      @JsonKey(name: 'html_url') String htmlUrl});
+}
+
+/// @nodoc
+class _$GithubUserModelCopyWithImpl<$Res, $Val extends GithubUserModel>
+    implements $GithubUserModelCopyWith<$Res> {
+  _$GithubUserModelCopyWithImpl(this._value, this._then);
+
+  // ignore: unused_field
+  final $Val _value;
+  // ignore: unused_field
+  final $Res Function($Val) _then;
+
+  /// Create a copy of GithubUserModel
+  /// with the given fields replaced by the non-null parameter values.
+  @pragma('vm:prefer-inline')
+  @override
+  $Res call({
+    Object? id = null,
+    Object? login = null,
+    Object? avatarUrl = null,
+    Object? htmlUrl = null,
+  }) {
+    return _then(_value.copyWith(
+      id: null == id
+          ? _value.id
+          : id // ignore: cast_nullable_to_non_nullable
+              as int,
+      login: null == login
+          ? _value.login
+          : login // ignore: cast_nullable_to_non_nullable
+              as String,
+      avatarUrl: null == avatarUrl
+          ? _value.avatarUrl
+          : avatarUrl // ignore: cast_nullable_to_non_nullable
+              as String,
+      htmlUrl: null == htmlUrl
+          ? _value.htmlUrl
+          : htmlUrl // ignore: cast_nullable_to_non_nullable
+              as String,
+    ) as $Val);
+  }
+}
+
+/// @nodoc
+abstract class _$$GithubUserModelImplCopyWith<$Res>
+    implements $GithubUserModelCopyWith<$Res> {
+  factory _$$GithubUserModelImplCopyWith(_$GithubUserModelImpl value,
+          $Res Function(_$GithubUserModelImpl) then) =
+      __$$GithubUserModelImplCopyWithImpl<$Res>;
+  @override
+  @useResult
+  $Res call(
+      {int id,
+      String login,
+      @JsonKey(name: 'avatar_url') String avatarUrl,
+      @JsonKey(name: 'html_url') String htmlUrl});
+}
+
+/// @nodoc
+class __$$GithubUserModelImplCopyWithImpl<$Res>
+    extends _$GithubUserModelCopyWithImpl<$Res, _$GithubUserModelImpl>
+    implements _$$GithubUserModelImplCopyWith<$Res> {
+  __$$GithubUserModelImplCopyWithImpl(
+      _$GithubUserModelImpl _value, $Res Function(_$GithubUserModelImpl) _then)
+      : super(_value, _then);
+
+  /// Create a copy of GithubUserModel
+  /// with the given fields replaced by the non-null parameter values.
+  @pragma('vm:prefer-inline')
+  @override
+  $Res call({
+    Object? id = null,
+    Object? login = null,
+    Object? avatarUrl = null,
+    Object? htmlUrl = null,
+  }) {
+    return _then(_$GithubUserModelImpl(
+      id: null == id
+          ? _value.id
+          : id // ignore: cast_nullable_to_non_nullable
+              as int,
+      login: null == login
+          ? _value.login
+          : login // ignore: cast_nullable_to_non_nullable
+              as String,
+      avatarUrl: null == avatarUrl
+          ? _value.avatarUrl
+          : avatarUrl // ignore: cast_nullable_to_non_nullable
+              as String,
+      htmlUrl: null == htmlUrl
+          ? _value.htmlUrl
+          : htmlUrl // ignore: cast_nullable_to_non_nullable
+              as String,
+    ));
+  }
+}
+
+/// @nodoc
+@JsonSerializable()
+class _$GithubUserModelImpl implements _GithubUserModel {
+  const _$GithubUserModelImpl(
+      {required this.id,
+      required this.login,
+      @JsonKey(name: 'avatar_url') required this.avatarUrl,
+      @JsonKey(name: 'html_url') required this.htmlUrl});
+
+  factory _$GithubUserModelImpl.fromJson(Map<String, dynamic> json) =>
+      _$$GithubUserModelImplFromJson(json);
+
+  @override
+  final int id;
+  @override
+  final String login;
+  @override
+  @JsonKey(name: 'avatar_url')
+  final String avatarUrl;
+  @override
+  @JsonKey(name: 'html_url')
+  final String htmlUrl;
+
+  @override
+  String toString() {
+    return 'GithubUserModel(id: $id, login: $login, avatarUrl: $avatarUrl, htmlUrl: $htmlUrl)';
+  }
+
+  @override
+  bool operator ==(Object other) {
+    return identical(this, other) ||
+        (other.runtimeType == runtimeType &&
+            other is _$GithubUserModelImpl &&
+            (identical(other.id, id) || other.id == id) &&
+            (identical(other.login, login) || other.login == login) &&
+            (identical(other.avatarUrl, avatarUrl) ||
+                other.avatarUrl == avatarUrl) &&
+            (identical(other.htmlUrl, htmlUrl) || other.htmlUrl == htmlUrl));
+  }
+
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  @override
+  int get hashCode => Object.hash(runtimeType, id, login, avatarUrl, htmlUrl);
+
+  /// Create a copy of GithubUserModel
+  /// with the given fields replaced by the non-null parameter values.
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  @override
+  @pragma('vm:prefer-inline')
+  _$$GithubUserModelImplCopyWith<_$GithubUserModelImpl> get copyWith =>
+      __$$GithubUserModelImplCopyWithImpl<_$GithubUserModelImpl>(
+          this, _$identity);
+
+  @override
+  Map<String, dynamic> toJson() {
+    return _$$GithubUserModelImplToJson(
+      this,
+    );
+  }
+}
+
+abstract class _GithubUserModel implements GithubUserModel {
+  const factory _GithubUserModel(
+          {required final int id,
+          required final String login,
+          @JsonKey(name: 'avatar_url') required final String avatarUrl,
+          @JsonKey(name: 'html_url') required final String htmlUrl}) =
+      _$GithubUserModelImpl;
+
+  factory _GithubUserModel.fromJson(Map<String, dynamic> json) =
+      _$GithubUserModelImpl.fromJson;
+
+  @override
+  int get id;
+  @override
+  String get login;
+  @override
+  @JsonKey(name: 'avatar_url')
+  String get avatarUrl;
+  @override
+  @JsonKey(name: 'html_url')
+  String get htmlUrl;
+
+  /// Create a copy of GithubUserModel
+  /// with the given fields replaced by the non-null parameter values.
+  @override
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  _$$GithubUserModelImplCopyWith<_$GithubUserModelImpl> get copyWith =>
+      throw _privateConstructorUsedError;
+}
+
+\n
+===== C:\Works\github_user_explorer_demo\lib\features\users\data\models\github_user_model.g.dart =====
+// GENERATED CODE - DO NOT MODIFY BY HAND
+
+part of 'github_user_model.dart';
+
+// **************************************************************************
+// JsonSerializableGenerator
+// **************************************************************************
+
+_$GithubUserModelImpl _$$GithubUserModelImplFromJson(
+        Map<String, dynamic> json) =>
+    _$GithubUserModelImpl(
+      id: (json['id'] as num).toInt(),
+      login: json['login'] as String,
+      avatarUrl: json['avatar_url'] as String,
+      htmlUrl: json['html_url'] as String,
+    );
+
+Map<String, dynamic> _$$GithubUserModelImplToJson(
+        _$GithubUserModelImpl instance) =>
+    <String, dynamic>{
+      'id': instance.id,
+      'login': instance.login,
+      'avatar_url': instance.avatarUrl,
+      'html_url': instance.htmlUrl,
+    };
+
+\n
+===== C:\Works\github_user_explorer_demo\lib\features\users\data\repositories\github_user_repository_impl.dart =====
+import 'package:github_user_explorer/core/errors/app_exception.dart';
+import 'package:github_user_explorer/core/network/base_repository.dart';
+import 'package:github_user_explorer/features/users/data/github_user_remote_data_source.dart';
+import 'package:github_user_explorer/features/users/data/models/github_user_model.dart';
+import 'package:github_user_explorer/features/users/domain/entities/github_user.dart';
+import 'package:github_user_explorer/features/users/domain/repositories/github_user_repository.dart';
+
+class GithubUserRepositoryImpl extends BaseRepository
+    implements GithubUserRepository {
+  final GithubUserRemoteDataSource _remote;
+
+  GithubUserRepositoryImpl(this._remote)
+      : super(_remote.client.dio);
+
+  @override
+  Future<List<GithubUser>> getUsers({String? query}) async {
+    final result = await safeApiCall<List<GithubUser>>(
+      () => _remote.getUsers(query: query),
+      (data) {
+        final items = data['items'] as List<dynamic>;
+        return items
+            .map((e) => GithubUserModel.fromJson(e).toEntity())
+            .toList();
+      },
+    );
+
+    if (result.hasError) {
+      throw AppException(result.error ?? "Unknown error");
+    }
+
+    return result.data!;
+  }
+}
+
+\n
+===== C:\Works\github_user_explorer_demo\lib\features\users\data\repositories\github_user_repository_mock.dart =====
+import 'package:github_user_explorer/features/users/domain/entities/github_user.dart';
+import 'package:github_user_explorer/features/users/domain/repositories/github_user_repository.dart';
+
+/// Repo mock dùng khi emulator không gọi được https://api.github.com
+/// hoặc khi bạn dạy thực hành offline.
+class GithubUserRepositoryMock implements GithubUserRepository {
+  @override
+  Future<List<GithubUser>> getUsers({String? query}) async {
+    // giả lập network
+    await Future<void>.delayed(const Duration(milliseconds: 400));
+
+    final q = (query ?? '').toLowerCase();
+
+    final data = <GithubUser>[
+      GithubUser(
+        id: 1,
+        login: 'flutterdev',
+        avatarUrl: 'https://via.placeholder.com/150?text=flutter',
+        htmlUrl: 'https://github.com/flutter',
+      ),
+      GithubUser(
+        id: 2,
+        login: 'dart-lang',
+        avatarUrl: 'https://via.placeholder.com/150?text=dart',
+        htmlUrl: 'https://github.com/dart-lang',
+      ),
+      GithubUser(
+        id: 3,
+        login: 'your-company',
+        avatarUrl: 'https://via.placeholder.com/150?text=company',
+        htmlUrl: 'https://github.com/your-company',
+      ),
+    ];
+
+    // nếu có query thì lọc cho sinh động
+    if (q.isNotEmpty) {
+      return data.where((e) => e.login.toLowerCase().contains(q)).toList();
+    }
+
+    return data;
+  }
+}
+
+\n
+===== C:\Works\github_user_explorer_demo\lib\features\users\domain\entities\github_user.dart =====
+class GithubUser {
+  final int id;
+  final String login;
+  final String avatarUrl;
+  final String htmlUrl;
+
+  GithubUser({
+    required this.id,
+    required this.login,
+    required this.avatarUrl,
+    required this.htmlUrl,
+  });
+}
+
+\n
+===== C:\Works\github_user_explorer_demo\lib\features\users\domain\repositories\github_user_repository.dart =====
+import 'package:github_user_explorer/features/users/domain/entities/github_user.dart';
+
+abstract class GithubUserRepository {
+  Future<List<GithubUser>> getUsers({String? query});
+}
+
+\n
+===== C:\Works\github_user_explorer_demo\lib\features\users\domain\usecases\get_users.dart =====
+\n
+===== C:\Works\github_user_explorer_demo\lib\features\users\presentation\cubit\user_state.dart =====
+import 'package:freezed_annotation/freezed_annotation.dart';
+import 'package:github_user_explorer/features/users/domain/entities/github_user.dart';
+
+part 'user_state.freezed.dart';
+
+@freezed
+class UserState with _$UserState {
+  const factory UserState.initial() = _Initial;
+  const factory UserState.loading() = _Loading;
+  const factory UserState.loaded(List<GithubUser> users) = _Loaded;
+  const factory UserState.error(String message) = _Error;
+}
+
+\n
+===== C:\Works\github_user_explorer_demo\lib\features\users\presentation\cubit\user_state.freezed.dart =====
+// coverage:ignore-file
+// GENERATED CODE - DO NOT MODIFY BY HAND
+// ignore_for_file: type=lint
+// ignore_for_file: unused_element, deprecated_member_use, deprecated_member_use_from_same_package, use_function_type_syntax_for_parameters, unnecessary_const, avoid_init_to_null, invalid_override_different_default_values_named, prefer_expression_function_bodies, annotate_overrides, invalid_annotation_target, unnecessary_question_mark
+
+part of 'user_state.dart';
+
+// **************************************************************************
+// FreezedGenerator
+// **************************************************************************
+
+T _$identity<T>(T value) => value;
+
+final _privateConstructorUsedError = UnsupportedError(
+    'It seems like you constructed your class using `MyClass._()`. This constructor is only meant to be used by freezed and you are not supposed to need it nor use it.\nPlease check the documentation here for more information: https://github.com/rrousselGit/freezed#adding-getters-and-methods-to-our-models');
+
+/// @nodoc
+mixin _$UserState {
+  @optionalTypeArgs
+  TResult when<TResult extends Object?>({
+    required TResult Function() initial,
+    required TResult Function() loading,
+    required TResult Function(List<GithubUser> users) loaded,
+    required TResult Function(String message) error,
+  }) =>
+      throw _privateConstructorUsedError;
+  @optionalTypeArgs
+  TResult? whenOrNull<TResult extends Object?>({
+    TResult? Function()? initial,
+    TResult? Function()? loading,
+    TResult? Function(List<GithubUser> users)? loaded,
+    TResult? Function(String message)? error,
+  }) =>
+      throw _privateConstructorUsedError;
+  @optionalTypeArgs
+  TResult maybeWhen<TResult extends Object?>({
+    TResult Function()? initial,
+    TResult Function()? loading,
+    TResult Function(List<GithubUser> users)? loaded,
+    TResult Function(String message)? error,
+    required TResult orElse(),
+  }) =>
+      throw _privateConstructorUsedError;
+  @optionalTypeArgs
+  TResult map<TResult extends Object?>({
+    required TResult Function(_Initial value) initial,
+    required TResult Function(_Loading value) loading,
+    required TResult Function(_Loaded value) loaded,
+    required TResult Function(_Error value) error,
+  }) =>
+      throw _privateConstructorUsedError;
+  @optionalTypeArgs
+  TResult? mapOrNull<TResult extends Object?>({
+    TResult? Function(_Initial value)? initial,
+    TResult? Function(_Loading value)? loading,
+    TResult? Function(_Loaded value)? loaded,
+    TResult? Function(_Error value)? error,
+  }) =>
+      throw _privateConstructorUsedError;
+  @optionalTypeArgs
+  TResult maybeMap<TResult extends Object?>({
+    TResult Function(_Initial value)? initial,
+    TResult Function(_Loading value)? loading,
+    TResult Function(_Loaded value)? loaded,
+    TResult Function(_Error value)? error,
+    required TResult orElse(),
+  }) =>
+      throw _privateConstructorUsedError;
+}
+
+/// @nodoc
+abstract class $UserStateCopyWith<$Res> {
+  factory $UserStateCopyWith(UserState value, $Res Function(UserState) then) =
+      _$UserStateCopyWithImpl<$Res, UserState>;
+}
+
+/// @nodoc
+class _$UserStateCopyWithImpl<$Res, $Val extends UserState>
+    implements $UserStateCopyWith<$Res> {
+  _$UserStateCopyWithImpl(this._value, this._then);
+
+  // ignore: unused_field
+  final $Val _value;
+  // ignore: unused_field
+  final $Res Function($Val) _then;
+
+  /// Create a copy of UserState
+  /// with the given fields replaced by the non-null parameter values.
+}
+
+/// @nodoc
+abstract class _$$InitialImplCopyWith<$Res> {
+  factory _$$InitialImplCopyWith(
+          _$InitialImpl value, $Res Function(_$InitialImpl) then) =
+      __$$InitialImplCopyWithImpl<$Res>;
+}
+
+/// @nodoc
+class __$$InitialImplCopyWithImpl<$Res>
+    extends _$UserStateCopyWithImpl<$Res, _$InitialImpl>
+    implements _$$InitialImplCopyWith<$Res> {
+  __$$InitialImplCopyWithImpl(
+      _$InitialImpl _value, $Res Function(_$InitialImpl) _then)
+      : super(_value, _then);
+
+  /// Create a copy of UserState
+  /// with the given fields replaced by the non-null parameter values.
+}
+
+/// @nodoc
+
+class _$InitialImpl implements _Initial {
+  const _$InitialImpl();
+
+  @override
+  String toString() {
+    return 'UserState.initial()';
+  }
+
+  @override
+  bool operator ==(Object other) {
+    return identical(this, other) ||
+        (other.runtimeType == runtimeType && other is _$InitialImpl);
+  }
+
+  @override
+  int get hashCode => runtimeType.hashCode;
+
+  @override
+  @optionalTypeArgs
+  TResult when<TResult extends Object?>({
+    required TResult Function() initial,
+    required TResult Function() loading,
+    required TResult Function(List<GithubUser> users) loaded,
+    required TResult Function(String message) error,
+  }) {
+    return initial();
+  }
+
+  @override
+  @optionalTypeArgs
+  TResult? whenOrNull<TResult extends Object?>({
+    TResult? Function()? initial,
+    TResult? Function()? loading,
+    TResult? Function(List<GithubUser> users)? loaded,
+    TResult? Function(String message)? error,
+  }) {
+    return initial?.call();
+  }
+
+  @override
+  @optionalTypeArgs
+  TResult maybeWhen<TResult extends Object?>({
+    TResult Function()? initial,
+    TResult Function()? loading,
+    TResult Function(List<GithubUser> users)? loaded,
+    TResult Function(String message)? error,
+    required TResult orElse(),
+  }) {
+    if (initial != null) {
+      return initial();
+    }
+    return orElse();
+  }
+
+  @override
+  @optionalTypeArgs
+  TResult map<TResult extends Object?>({
+    required TResult Function(_Initial value) initial,
+    required TResult Function(_Loading value) loading,
+    required TResult Function(_Loaded value) loaded,
+    required TResult Function(_Error value) error,
+  }) {
+    return initial(this);
+  }
+
+  @override
+  @optionalTypeArgs
+  TResult? mapOrNull<TResult extends Object?>({
+    TResult? Function(_Initial value)? initial,
+    TResult? Function(_Loading value)? loading,
+    TResult? Function(_Loaded value)? loaded,
+    TResult? Function(_Error value)? error,
+  }) {
+    return initial?.call(this);
+  }
+
+  @override
+  @optionalTypeArgs
+  TResult maybeMap<TResult extends Object?>({
+    TResult Function(_Initial value)? initial,
+    TResult Function(_Loading value)? loading,
+    TResult Function(_Loaded value)? loaded,
+    TResult Function(_Error value)? error,
+    required TResult orElse(),
+  }) {
+    if (initial != null) {
+      return initial(this);
+    }
+    return orElse();
+  }
+}
+
+abstract class _Initial implements UserState {
+  const factory _Initial() = _$InitialImpl;
+}
+
+/// @nodoc
+abstract class _$$LoadingImplCopyWith<$Res> {
+  factory _$$LoadingImplCopyWith(
+          _$LoadingImpl value, $Res Function(_$LoadingImpl) then) =
+      __$$LoadingImplCopyWithImpl<$Res>;
+}
+
+/// @nodoc
+class __$$LoadingImplCopyWithImpl<$Res>
+    extends _$UserStateCopyWithImpl<$Res, _$LoadingImpl>
+    implements _$$LoadingImplCopyWith<$Res> {
+  __$$LoadingImplCopyWithImpl(
+      _$LoadingImpl _value, $Res Function(_$LoadingImpl) _then)
+      : super(_value, _then);
+
+  /// Create a copy of UserState
+  /// with the given fields replaced by the non-null parameter values.
+}
+
+/// @nodoc
+
+class _$LoadingImpl implements _Loading {
+  const _$LoadingImpl();
+
+  @override
+  String toString() {
+    return 'UserState.loading()';
+  }
+
+  @override
+  bool operator ==(Object other) {
+    return identical(this, other) ||
+        (other.runtimeType == runtimeType && other is _$LoadingImpl);
+  }
+
+  @override
+  int get hashCode => runtimeType.hashCode;
+
+  @override
+  @optionalTypeArgs
+  TResult when<TResult extends Object?>({
+    required TResult Function() initial,
+    required TResult Function() loading,
+    required TResult Function(List<GithubUser> users) loaded,
+    required TResult Function(String message) error,
+  }) {
+    return loading();
+  }
+
+  @override
+  @optionalTypeArgs
+  TResult? whenOrNull<TResult extends Object?>({
+    TResult? Function()? initial,
+    TResult? Function()? loading,
+    TResult? Function(List<GithubUser> users)? loaded,
+    TResult? Function(String message)? error,
+  }) {
+    return loading?.call();
+  }
+
+  @override
+  @optionalTypeArgs
+  TResult maybeWhen<TResult extends Object?>({
+    TResult Function()? initial,
+    TResult Function()? loading,
+    TResult Function(List<GithubUser> users)? loaded,
+    TResult Function(String message)? error,
+    required TResult orElse(),
+  }) {
+    if (loading != null) {
+      return loading();
+    }
+    return orElse();
+  }
+
+  @override
+  @optionalTypeArgs
+  TResult map<TResult extends Object?>({
+    required TResult Function(_Initial value) initial,
+    required TResult Function(_Loading value) loading,
+    required TResult Function(_Loaded value) loaded,
+    required TResult Function(_Error value) error,
+  }) {
+    return loading(this);
+  }
+
+  @override
+  @optionalTypeArgs
+  TResult? mapOrNull<TResult extends Object?>({
+    TResult? Function(_Initial value)? initial,
+    TResult? Function(_Loading value)? loading,
+    TResult? Function(_Loaded value)? loaded,
+    TResult? Function(_Error value)? error,
+  }) {
+    return loading?.call(this);
+  }
+
+  @override
+  @optionalTypeArgs
+  TResult maybeMap<TResult extends Object?>({
+    TResult Function(_Initial value)? initial,
+    TResult Function(_Loading value)? loading,
+    TResult Function(_Loaded value)? loaded,
+    TResult Function(_Error value)? error,
+    required TResult orElse(),
+  }) {
+    if (loading != null) {
+      return loading(this);
+    }
+    return orElse();
+  }
+}
+
+abstract class _Loading implements UserState {
+  const factory _Loading() = _$LoadingImpl;
+}
+
+/// @nodoc
+abstract class _$$LoadedImplCopyWith<$Res> {
+  factory _$$LoadedImplCopyWith(
+          _$LoadedImpl value, $Res Function(_$LoadedImpl) then) =
+      __$$LoadedImplCopyWithImpl<$Res>;
+  @useResult
+  $Res call({List<GithubUser> users});
+}
+
+/// @nodoc
+class __$$LoadedImplCopyWithImpl<$Res>
+    extends _$UserStateCopyWithImpl<$Res, _$LoadedImpl>
+    implements _$$LoadedImplCopyWith<$Res> {
+  __$$LoadedImplCopyWithImpl(
+      _$LoadedImpl _value, $Res Function(_$LoadedImpl) _then)
+      : super(_value, _then);
+
+  /// Create a copy of UserState
+  /// with the given fields replaced by the non-null parameter values.
+  @pragma('vm:prefer-inline')
+  @override
+  $Res call({
+    Object? users = null,
+  }) {
+    return _then(_$LoadedImpl(
+      null == users
+          ? _value._users
+          : users // ignore: cast_nullable_to_non_nullable
+              as List<GithubUser>,
+    ));
+  }
+}
+
+/// @nodoc
+
+class _$LoadedImpl implements _Loaded {
+  const _$LoadedImpl(final List<GithubUser> users) : _users = users;
+
+  final List<GithubUser> _users;
+  @override
+  List<GithubUser> get users {
+    if (_users is EqualUnmodifiableListView) return _users;
+    // ignore: implicit_dynamic_type
+    return EqualUnmodifiableListView(_users);
+  }
+
+  @override
+  String toString() {
+    return 'UserState.loaded(users: $users)';
+  }
+
+  @override
+  bool operator ==(Object other) {
+    return identical(this, other) ||
+        (other.runtimeType == runtimeType &&
+            other is _$LoadedImpl &&
+            const DeepCollectionEquality().equals(other._users, _users));
+  }
+
+  @override
+  int get hashCode =>
+      Object.hash(runtimeType, const DeepCollectionEquality().hash(_users));
+
+  /// Create a copy of UserState
+  /// with the given fields replaced by the non-null parameter values.
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  @override
+  @pragma('vm:prefer-inline')
+  _$$LoadedImplCopyWith<_$LoadedImpl> get copyWith =>
+      __$$LoadedImplCopyWithImpl<_$LoadedImpl>(this, _$identity);
+
+  @override
+  @optionalTypeArgs
+  TResult when<TResult extends Object?>({
+    required TResult Function() initial,
+    required TResult Function() loading,
+    required TResult Function(List<GithubUser> users) loaded,
+    required TResult Function(String message) error,
+  }) {
+    return loaded(users);
+  }
+
+  @override
+  @optionalTypeArgs
+  TResult? whenOrNull<TResult extends Object?>({
+    TResult? Function()? initial,
+    TResult? Function()? loading,
+    TResult? Function(List<GithubUser> users)? loaded,
+    TResult? Function(String message)? error,
+  }) {
+    return loaded?.call(users);
+  }
+
+  @override
+  @optionalTypeArgs
+  TResult maybeWhen<TResult extends Object?>({
+    TResult Function()? initial,
+    TResult Function()? loading,
+    TResult Function(List<GithubUser> users)? loaded,
+    TResult Function(String message)? error,
+    required TResult orElse(),
+  }) {
+    if (loaded != null) {
+      return loaded(users);
+    }
+    return orElse();
+  }
+
+  @override
+  @optionalTypeArgs
+  TResult map<TResult extends Object?>({
+    required TResult Function(_Initial value) initial,
+    required TResult Function(_Loading value) loading,
+    required TResult Function(_Loaded value) loaded,
+    required TResult Function(_Error value) error,
+  }) {
+    return loaded(this);
+  }
+
+  @override
+  @optionalTypeArgs
+  TResult? mapOrNull<TResult extends Object?>({
+    TResult? Function(_Initial value)? initial,
+    TResult? Function(_Loading value)? loading,
+    TResult? Function(_Loaded value)? loaded,
+    TResult? Function(_Error value)? error,
+  }) {
+    return loaded?.call(this);
+  }
+
+  @override
+  @optionalTypeArgs
+  TResult maybeMap<TResult extends Object?>({
+    TResult Function(_Initial value)? initial,
+    TResult Function(_Loading value)? loading,
+    TResult Function(_Loaded value)? loaded,
+    TResult Function(_Error value)? error,
+    required TResult orElse(),
+  }) {
+    if (loaded != null) {
+      return loaded(this);
+    }
+    return orElse();
+  }
+}
+
+abstract class _Loaded implements UserState {
+  const factory _Loaded(final List<GithubUser> users) = _$LoadedImpl;
+
+  List<GithubUser> get users;
+
+  /// Create a copy of UserState
+  /// with the given fields replaced by the non-null parameter values.
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  _$$LoadedImplCopyWith<_$LoadedImpl> get copyWith =>
+      throw _privateConstructorUsedError;
+}
+
+/// @nodoc
+abstract class _$$ErrorImplCopyWith<$Res> {
+  factory _$$ErrorImplCopyWith(
+          _$ErrorImpl value, $Res Function(_$ErrorImpl) then) =
+      __$$ErrorImplCopyWithImpl<$Res>;
+  @useResult
+  $Res call({String message});
+}
+
+/// @nodoc
+class __$$ErrorImplCopyWithImpl<$Res>
+    extends _$UserStateCopyWithImpl<$Res, _$ErrorImpl>
+    implements _$$ErrorImplCopyWith<$Res> {
+  __$$ErrorImplCopyWithImpl(
+      _$ErrorImpl _value, $Res Function(_$ErrorImpl) _then)
+      : super(_value, _then);
+
+  /// Create a copy of UserState
+  /// with the given fields replaced by the non-null parameter values.
+  @pragma('vm:prefer-inline')
+  @override
+  $Res call({
+    Object? message = null,
+  }) {
+    return _then(_$ErrorImpl(
+      null == message
+          ? _value.message
+          : message // ignore: cast_nullable_to_non_nullable
+              as String,
+    ));
+  }
+}
+
+/// @nodoc
+
+class _$ErrorImpl implements _Error {
+  const _$ErrorImpl(this.message);
+
+  @override
+  final String message;
+
+  @override
+  String toString() {
+    return 'UserState.error(message: $message)';
+  }
+
+  @override
+  bool operator ==(Object other) {
+    return identical(this, other) ||
+        (other.runtimeType == runtimeType &&
+            other is _$ErrorImpl &&
+            (identical(other.message, message) || other.message == message));
+  }
+
+  @override
+  int get hashCode => Object.hash(runtimeType, message);
+
+  /// Create a copy of UserState
+  /// with the given fields replaced by the non-null parameter values.
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  @override
+  @pragma('vm:prefer-inline')
+  _$$ErrorImplCopyWith<_$ErrorImpl> get copyWith =>
+      __$$ErrorImplCopyWithImpl<_$ErrorImpl>(this, _$identity);
+
+  @override
+  @optionalTypeArgs
+  TResult when<TResult extends Object?>({
+    required TResult Function() initial,
+    required TResult Function() loading,
+    required TResult Function(List<GithubUser> users) loaded,
+    required TResult Function(String message) error,
+  }) {
+    return error(message);
+  }
+
+  @override
+  @optionalTypeArgs
+  TResult? whenOrNull<TResult extends Object?>({
+    TResult? Function()? initial,
+    TResult? Function()? loading,
+    TResult? Function(List<GithubUser> users)? loaded,
+    TResult? Function(String message)? error,
+  }) {
+    return error?.call(message);
+  }
+
+  @override
+  @optionalTypeArgs
+  TResult maybeWhen<TResult extends Object?>({
+    TResult Function()? initial,
+    TResult Function()? loading,
+    TResult Function(List<GithubUser> users)? loaded,
+    TResult Function(String message)? error,
+    required TResult orElse(),
+  }) {
+    if (error != null) {
+      return error(message);
+    }
+    return orElse();
+  }
+
+  @override
+  @optionalTypeArgs
+  TResult map<TResult extends Object?>({
+    required TResult Function(_Initial value) initial,
+    required TResult Function(_Loading value) loading,
+    required TResult Function(_Loaded value) loaded,
+    required TResult Function(_Error value) error,
+  }) {
+    return error(this);
+  }
+
+  @override
+  @optionalTypeArgs
+  TResult? mapOrNull<TResult extends Object?>({
+    TResult? Function(_Initial value)? initial,
+    TResult? Function(_Loading value)? loading,
+    TResult? Function(_Loaded value)? loaded,
+    TResult? Function(_Error value)? error,
+  }) {
+    return error?.call(this);
+  }
+
+  @override
+  @optionalTypeArgs
+  TResult maybeMap<TResult extends Object?>({
+    TResult Function(_Initial value)? initial,
+    TResult Function(_Loading value)? loading,
+    TResult Function(_Loaded value)? loaded,
+    TResult Function(_Error value)? error,
+    required TResult orElse(),
+  }) {
+    if (error != null) {
+      return error(this);
+    }
+    return orElse();
+  }
+}
+
+abstract class _Error implements UserState {
+  const factory _Error(final String message) = _$ErrorImpl;
+
+  String get message;
+
+  /// Create a copy of UserState
+  /// with the given fields replaced by the non-null parameter values.
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  _$$ErrorImplCopyWith<_$ErrorImpl> get copyWith =>
+      throw _privateConstructorUsedError;
+}
+
+\n
+===== C:\Works\github_user_explorer_demo\lib\features\users\presentation\pages\user_detail_page.dart =====
+import 'package:flutter/material.dart';
+
+class UserDetailPage extends StatelessWidget {
+  final String id;
+  final String login;
+  final String avatarUrl;
+
+  const UserDetailPage({
+    super.key,
+    required this.id,
+    required this.login,
+    required this.avatarUrl,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('User Detail: $login'),
+      ),
+      body: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.start,
+          children: [
+            CircleAvatar(
+              radius: 40,
+              backgroundImage: NetworkImage(avatarUrl),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              login,
+              style: Theme.of(context).textTheme.headlineSmall,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'User ID: $id',
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+            const SizedBox(height: 24),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text("Go Back"),
+            )
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+\n
+===== C:\Works\github_user_explorer_demo\lib\features\users\presentation\pages\user_list_page.dart =====
+import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:github_user_explorer/features/users/presentation/cubit/user_cubit.dart';
+import 'package:github_user_explorer/features/users/presentation/cubit/user_state.dart';
+import 'package:github_user_explorer/features/users/presentation/widgets/UserCard.dart';
+import 'package:github_user_explorer/l10n/app_localizations.dart';
+
+class UserListPage extends StatefulWidget {
+  const UserListPage({super.key});
+
+  @override
+  State<UserListPage> createState() => _UserListPageState();
+}
+
+class _UserListPageState extends State<UserListPage> {
+  final _controller = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    context.read<UserCubit>().fetchUsers();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
+
+    return Scaffold(
+      appBar: AppBar(title: Text(l10n.usersTitle)),
+      body: Column(
+        children: [
+          _buildSearch(l10n),
+          Expanded(
+            child: BlocBuilder<UserCubit, UserState>(
+              builder: (context, state) {
+                return state.when(
+                  initial: () => const Center(child: Text("Hãy tìm người dùng")),
+                  loading: () => const Center(child: CircularProgressIndicator()),
+                  loaded: (users) => _buildResult(users),
+                  error: (msg) => Center(
+                    child: Text(
+                      msg,
+                      style: const TextStyle(color: Colors.red),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSearch(AppLocalizations l10n) {
+    return Padding(
+      padding: const EdgeInsets.all(8),
+      child: TextField(
+        controller: _controller,
+        decoration: InputDecoration(
+          hintText: l10n.searchHint,
+          suffixIcon: IconButton(
+            icon: const Icon(Icons.search),
+            onPressed: () {
+              context
+                  .read<UserCubit>()
+                  .fetchUsers(query: _controller.text);
+            },
+          ),
+        ),
+        onSubmitted: (v) =>
+            context.read<UserCubit>().fetchUsers(query: v),
+      ),
+    );
+  }
+
+  Widget _buildResult(List users) {
+    return ListView.builder(
+      padding: const EdgeInsets.all(8),
+      itemCount: users.length,
+      itemBuilder: (_, index) => UserCard(user: users[index]),
+    );
+  }
+}
+
+\n
+===== C:\Works\github_user_explorer_demo\lib\features\users\presentation\widgets\EmptyState.dart =====
+import 'package:flutter/material.dart';
+import 'package:github_user_explorer/l10n/app_localizations.dart';
+class EmptyStateWidget extends StatelessWidget {
+  const EmptyStateWidget({super.key});
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    return Center(child: Text(l10n!.emptyState));
+  }
+}
+\n
+===== C:\Works\github_user_explorer_demo\lib\features\users\presentation\widgets\ErrorState.dart =====
+import 'package:flutter/material.dart';
+class ErrorMessageWidget extends StatelessWidget {
+  final String errorText;
+  final String details;
+  final VoidCallback onRetry;
+  final String retryText;
+  final TextStyle? textStyle;
+  const ErrorMessageWidget({
+    super.key,
+    required this.errorText,
+    required this.details,
+    required this.onRetry,
+    this.retryText = "Retry",
+    this.textStyle,
+  });
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(errorText),
+        Text(details, style: textStyle),
+        const SizedBox(height: 8),
+        ElevatedButton(
+          onPressed: onRetry,
+          child: Text(retryText),
+        ),
+      ],
+    );
+  }
+}
+\n
+===== C:\Works\github_user_explorer_demo\lib\features\users\presentation\widgets\LoadingIndicator.dart =====
+import 'package:flutter/material.dart';
+class LoadingIndicator extends StatelessWidget {
+  const LoadingIndicator({super.key});
+  @override
+  Widget build(BuildContext context) {
+    return const Center(child: CircularProgressIndicator());
+  }
+}
+\n
+===== C:\Works\github_user_explorer_demo\lib\features\users\presentation\widgets\UserCard.dart =====
+import 'package:flutter/material.dart';
+import 'package:github_user_explorer/features/users/domain/entities/github_user.dart';
+import 'package:go_router/go_router.dart';
+
+class UserCard extends StatelessWidget {
+  final GithubUser user;
+
+  const UserCard({super.key, required this.user});
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: ListTile(
+        leading: CircleAvatar(backgroundImage: NetworkImage(user.avatarUrl)),
+        title: Text(user.login),
+        onTap: () {
+          context.push(
+            "/detail/${user.id}?login=${user.login}&avatar=${user.avatarUrl}",
+          );
+        },
+      ),
+    );
+  }
+}
+
+\n
+===== C:\Works\github_user_explorer_demo\lib\l10n\app_en.arb =====
+{
+  "@@locale": "en",
+  "appTitle": "GitHub User Explorer",
+  "usersTitle": "GitHub Users",
+  "retry": "Retry",
+  "searchHint": "Search GitHub username...",
+  "emptyState": "No users yet. Try searching.",
+  "errorState": "Something went wrong",
+  "details": "Details"
+}
+
+\n
+===== C:\Works\github_user_explorer_demo\lib\l10n\app_localizations.dart =====
+import 'dart:async';
+
+import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:intl/intl.dart' as intl;
+
+import 'app_localizations_en.dart';
+import 'app_localizations_vi.dart';
+
+// ignore_for_file: type=lint
+
+/// Callers can lookup localized strings with an instance of AppLocalizations
+/// returned by `AppLocalizations.of(context)`.
+///
+/// Applications need to include `AppLocalizations.delegate()` in their app's
+/// `localizationDelegates` list, and the locales they support in the app's
+/// `supportedLocales` list. For example:
+///
+/// ```dart
+/// import 'l10n/app_localizations.dart';
+///
+/// return MaterialApp(
+///   localizationsDelegates: AppLocalizations.localizationsDelegates,
+///   supportedLocales: AppLocalizations.supportedLocales,
+///   home: MyApplicationHome(),
+/// );
+/// ```
+///
+/// ## Update pubspec.yaml
+///
+/// Please make sure to update your pubspec.yaml to include the following
+/// packages:
+///
+/// ```yaml
+/// dependencies:
+///   # Internationalization support.
+///   flutter_localizations:
+///     sdk: flutter
+///   intl: any # Use the pinned version from flutter_localizations
+///
+///   # Rest of dependencies
+/// ```
+///
+/// ## iOS Applications
+///
+/// iOS applications define key application metadata, including supported
+/// locales, in an Info.plist file that is built into the application bundle.
+/// To configure the locales supported by your app, you’ll need to edit this
+/// file.
+///
+/// First, open your project’s ios/Runner.xcworkspace Xcode workspace file.
+/// Then, in the Project Navigator, open the Info.plist file under the Runner
+/// project’s Runner folder.
+///
+/// Next, select the Information Property List item, select Add Item from the
+/// Editor menu, then select Localizations from the pop-up menu.
+///
+/// Select and expand the newly-created Localizations item then, for each
+/// locale your application supports, add a new item and select the locale
+/// you wish to add from the pop-up menu in the Value field. This list should
+/// be consistent with the languages listed in the AppLocalizations.supportedLocales
+/// property.
+abstract class AppLocalizations {
+  AppLocalizations(String locale)
+      : localeName = intl.Intl.canonicalizedLocale(locale.toString());
+
+  final String localeName;
+
+  static AppLocalizations? of(BuildContext context) {
+    return Localizations.of<AppLocalizations>(context, AppLocalizations);
+  }
+
+  static const LocalizationsDelegate<AppLocalizations> delegate =
+      _AppLocalizationsDelegate();
+
+  /// A list of this localizations delegate along with the default localizations
+  /// delegates.
+  ///
+  /// Returns a list of localizations delegates containing this delegate along with
+  /// GlobalMaterialLocalizations.delegate, GlobalCupertinoLocalizations.delegate,
+  /// and GlobalWidgetsLocalizations.delegate.
+  ///
+  /// Additional delegates can be added by appending to this list in
+  /// MaterialApp. This list does not have to be used at all if a custom list
+  /// of delegates is preferred or required.
+  static const List<LocalizationsDelegate<dynamic>> localizationsDelegates =
+      <LocalizationsDelegate<dynamic>>[
+    delegate,
+    GlobalMaterialLocalizations.delegate,
+    GlobalCupertinoLocalizations.delegate,
+    GlobalWidgetsLocalizations.delegate,
+  ];
+
+  /// A list of this localizations delegate's supported locales.
+  static const List<Locale> supportedLocales = <Locale>[
+    Locale('en'),
+    Locale('vi')
+  ];
+
+  /// No description provided for @appTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'GitHub User Explorer'**
+  String get appTitle;
+
+  /// No description provided for @usersTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'GitHub Users'**
+  String get usersTitle;
+
+  /// No description provided for @retry.
+  ///
+  /// In en, this message translates to:
+  /// **'Retry'**
+  String get retry;
+
+  /// No description provided for @searchHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Search GitHub username...'**
+  String get searchHint;
+
+  /// No description provided for @emptyState.
+  ///
+  /// In en, this message translates to:
+  /// **'No users yet. Try searching.'**
+  String get emptyState;
+
+  /// No description provided for @errorState.
+  ///
+  /// In en, this message translates to:
+  /// **'Something went wrong'**
+  String get errorState;
+
+  /// No description provided for @details.
+  ///
+  /// In en, this message translates to:
+  /// **'Details'**
+  String get details;
+}
+
+class _AppLocalizationsDelegate
+    extends LocalizationsDelegate<AppLocalizations> {
+  const _AppLocalizationsDelegate();
+
+  @override
+  Future<AppLocalizations> load(Locale locale) {
+    return SynchronousFuture<AppLocalizations>(lookupAppLocalizations(locale));
+  }
+
+  @override
+  bool isSupported(Locale locale) =>
+      <String>['en', 'vi'].contains(locale.languageCode);
+
+  @override
+  bool shouldReload(_AppLocalizationsDelegate old) => false;
+}
+
+AppLocalizations lookupAppLocalizations(Locale locale) {
+  // Lookup logic when only language code is specified.
+  switch (locale.languageCode) {
+    case 'en':
+      return AppLocalizationsEn();
+    case 'vi':
+      return AppLocalizationsVi();
+  }
+
+  throw FlutterError(
+      'AppLocalizations.delegate failed to load unsupported locale "$locale". This is likely '
+      'an issue with the localizations generation tool. Please file an issue '
+      'on GitHub with a reproducible sample app and the gen-l10n configuration '
+      'that was used.');
+}
+
+\n
+===== C:\Works\github_user_explorer_demo\lib\l10n\app_localizations_en.dart =====
+// ignore: unused_import
+import 'package:intl/intl.dart' as intl;
+import 'app_localizations.dart';
+
+// ignore_for_file: type=lint
+
+/// The translations for English (`en`).
+class AppLocalizationsEn extends AppLocalizations {
+  AppLocalizationsEn([String locale = 'en']) : super(locale);
+
+  @override
+  String get appTitle => 'GitHub User Explorer';
+
+  @override
+  String get usersTitle => 'GitHub Users';
+
+  @override
+  String get retry => 'Retry';
+
+  @override
+  String get searchHint => 'Search GitHub username...';
+
+  @override
+  String get emptyState => 'No users yet. Try searching.';
+
+  @override
+  String get errorState => 'Something went wrong';
+
+  @override
+  String get details => 'Details';
+}
+
+\n
+===== C:\Works\github_user_explorer_demo\lib\l10n\app_localizations_vi.dart =====
+// ignore: unused_import
+import 'package:intl/intl.dart' as intl;
+import 'app_localizations.dart';
+
+// ignore_for_file: type=lint
+
+/// The translations for Vietnamese (`vi`).
+class AppLocalizationsVi extends AppLocalizations {
+  AppLocalizationsVi([String locale = 'vi']) : super(locale);
+
+  @override
+  String get appTitle => 'Khám phá người dùng GitHub';
+
+  @override
+  String get usersTitle => 'Danh sách GitHub';
+
+  @override
+  String get retry => 'Thử lại';
+
+  @override
+  String get searchHint => 'Tìm username GitHub...';
+
+  @override
+  String get emptyState => 'Chưa có dữ liệu. Hãy tìm thử.';
+
+  @override
+  String get errorState => 'Có lỗi xảy ra';
+
+  @override
+  String get details => 'Chi tiết';
+}
+

@@ -1,10 +1,10 @@
 import 'package:github_user_explorer/core/network/app_http_client.dart';
-import 'package:github_user_explorer/features/users/data/models/github_user_model.dart';
+import 'package:dio/dio.dart';
 
 abstract class GithubUserRemoteDataSource {
-  AppHttpClient get client; 
+  AppHttpClient get client;
 
-  Future<List<GithubUserModel>> getUsers({String? query});
+  Future<Response> getUsers({String? query});
 }
 
 class GithubUserRemoteDataSourceImpl implements GithubUserRemoteDataSource {
@@ -14,15 +14,12 @@ class GithubUserRemoteDataSourceImpl implements GithubUserRemoteDataSource {
   GithubUserRemoteDataSourceImpl(this.client);
 
   @override
-  Future<List<GithubUserModel>> getUsers({String? query}) async {
-    final response = await client.get(
+  Future<Response> getUsers({String? query}) {
+    return client.get(
       '/search/users',
       queryParameters: (query != null && query.isNotEmpty)
           ? {'q': query}
           : {'q': 'flutter'},
     );
-
-    final items = response.data['items'] as List<dynamic>;
-    return items.map((e) => GithubUserModel.fromJson(e)).toList();
   }
 }

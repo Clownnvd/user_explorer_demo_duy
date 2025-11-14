@@ -1,19 +1,23 @@
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:github_user_explorer/features/users/domain/usecases/get_users.dart';
-import 'package:github_user_explorer/features/users/presentation/cubit/user_state.dart';
+import 'package:github_user_explorer/core/errors/app_exception.dart';
+import 'package:github_user_explorer/features/users/domain/repositories/github_user_repository.dart';
+import 'user_state.dart';
 
 class UserCubit extends Cubit<UserState> {
-  final GetUsers _getUsers;
+  final GithubUserRepository repo;
 
-  UserCubit(this._getUsers) : super(const UserState.initial());
+  UserCubit(this.repo) : super(const UserState.initial());
 
   Future<void> fetchUsers({String? query}) async {
     emit(const UserState.loading());
+
     try {
-      final users = await _getUsers(query: query);
+      final users = await repo.getUsers(query: query);
       emit(UserState.loaded(users));
+    } on AppException catch (e) {
+      emit(UserState.error(e.message));
     } catch (e) {
-      emit(UserState.error(e.toString()));
+      emit(UserState.error("Đã xảy ra lỗi không xác định"));
     }
   }
 }

@@ -47,6 +47,6 @@ Future<void> setupDependencies(AppConfig config) async {
 
   // 7. Cubit
   getIt.registerFactory<UserCubit>(
-    () => UserCubit(getIt<GetUsers>()),
+    () => UserCubit(getIt<GithubUserRepository>()),
   );
 }
