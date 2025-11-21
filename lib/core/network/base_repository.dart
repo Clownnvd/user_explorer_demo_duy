@@ -1,8 +1,9 @@
 import 'package:dio/dio.dart';
-import 'package:github_user_explorer/core/errors/app_exception.dart';
 import 'base_response.dart';
 import 'error_mapper.dart';
-
+//tầng xử lý API chung cho tất cả repository trong app
+//Chuẩn hóa cách gọi API
+// /Chuẩn hóa lỗi thông qua ErrorMapper
 class BaseRepository {
   final Dio dio;
 

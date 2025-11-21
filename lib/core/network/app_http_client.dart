@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
-
+//là một wrapper (lớp bọc) quanh Dio
+//Không để repository hoặc UI gọi
 class AppHttpClient {
   final Dio dio;
 

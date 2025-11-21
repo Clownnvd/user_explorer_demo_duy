@@ -1,5 +1,6 @@
 import 'dart:developer';
 import 'package:dio/dio.dart';
+//là Dio Interceptor – tức là lớp trung gian chạy trước khi gửi request, sau khi nhận response, và khi xảy ra lỗi
 
 class AppInterceptor extends Interceptor {
   final Dio dio;
@@ -8,6 +9,7 @@ class AppInterceptor extends Interceptor {
 
   @override
   void onRequest(RequestOptions options, RequestInterceptorHandler handler) {
+    //Log toàn bộ thông tin request:
     log(
       '-- REQUEST --\n'
       'URL: ${options.uri}\n'

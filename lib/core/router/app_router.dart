@@ -12,6 +12,7 @@ final appRouter = GoRouter(
     GoRoute(
       path: '/detail/:id',
       builder: (context, state) {
+        //lấy tham số
         final id = state.pathParameters['id']!;
         final login = state.uri.queryParameters['login']!;
         final avatar = state.uri.queryParameters['avatar']!;

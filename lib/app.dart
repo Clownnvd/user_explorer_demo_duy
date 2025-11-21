@@ -6,10 +6,11 @@ import 'package:github_user_explorer/core/router/app_router.dart';
 import 'package:github_user_explorer/core/theme/app_theme.dart';
 import 'package:github_user_explorer/core/utils/app_config.dart';
 import 'package:github_user_explorer/features/users/domain/repositories/github_user_repository.dart';
-import 'package:github_user_explorer/features/users/domain/usecases/get_users.dart';
 import 'package:github_user_explorer/features/users/presentation/cubit/user_cubit.dart';
 import 'package:github_user_explorer/l10n/app_localizations.dart';
-
+//DEV → dùng theme indigo
+//PROD → dùng theme orange
+//Ứng dụng hỗ trợ đa ngôn ngữ, thông qua
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
@@ -24,12 +25,17 @@ class MyApp extends StatelessWidget {
         ),
       ],
       child: MaterialApp.router(
-        title: 'GitHub User Explorer',
-        debugShowCheckedModeBanner: false,
-        theme: AppTheme.light,
+        title: 'GitHub User Explorer (${config.flavor})',
+
+        /// 🎨 Dùng theme từ AppConfig
+        theme: config.theme,
         darkTheme: AppTheme.dark,
         themeMode: ThemeMode.system,
+
+        debugShowCheckedModeBanner: false,
         routerConfig: appRouter,
+
+        /// 🌍 Localization
         localizationsDelegates: const [
           AppLocalizations.delegate,
           GlobalMaterialLocalizations.delegate,

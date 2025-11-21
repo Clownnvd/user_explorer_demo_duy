@@ -5,12 +5,12 @@ import 'package:github_user_explorer/features/users/data/models/github_user_mode
 import 'package:github_user_explorer/features/users/domain/entities/github_user.dart';
 import 'package:github_user_explorer/features/users/domain/repositories/github_user_repository.dart';
 
+// repository thật
 class GithubUserRepositoryImpl extends BaseRepository
     implements GithubUserRepository {
   final GithubUserRemoteDataSource _remote;
 
-  GithubUserRepositoryImpl(this._remote)
-      : super(_remote.client.dio);
+  GithubUserRepositoryImpl(this._remote) : super(_remote.client.dio);
 
   @override
   Future<List<GithubUser>> getUsers({String? query}) async {

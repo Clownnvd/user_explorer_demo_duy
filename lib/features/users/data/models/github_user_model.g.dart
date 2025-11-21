@@ -1,5 +1,6 @@
 // GENERATED CODE - DO NOT MODIFY BY HAND
-
+// /Chuyển JSON từ API → GithubUserModel
+//Chuyển GithubUserModel → JSON (nếu cần POST data)
 part of 'github_user_model.dart';
 
 // **************************************************************************

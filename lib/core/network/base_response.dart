@@ -1,3 +1,4 @@
+//response
 class BaseResponse<T> {
   final T? data;
   final String? error;

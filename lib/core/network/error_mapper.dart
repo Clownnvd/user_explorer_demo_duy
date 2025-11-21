@@ -11,7 +11,8 @@ class ErrorMapper {
 
         case DioExceptionType.badResponse:
           final status = error.response?.statusCode;
-          if (status == 401) return "Bạn không có quyền truy cập.";
+          if (status == 401) return "Bạn chưa đăng nhập";
+          if (status == 403) return "Bạn không có quyền truy cập";
           if (status == 404) return "Không tìm thấy tài nguyên.";
           if (status == 500) return "Lỗi máy chủ. Vui lòng thử lại.";
           return "Lỗi máy chủ ($status).";

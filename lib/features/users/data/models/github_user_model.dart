@@ -1,9 +1,10 @@
 import 'package:freezed_annotation/freezed_annotation.dart';
 import 'package:github_user_explorer/features/users/domain/entities/github_user.dart';
 
-part 'github_user_model.freezed.dart';
-part 'github_user_model.g.dart';
-
+part 'github_user_model.freezed.dart'; //*.freezed.dart → equals, copyWith, immutable, constructor
+part 'github_user_model.g.dart'; //*.g.dart → JSON serialization (toJson, fromJson)
+//Parse JSON từ API GitHub → Model
+//Convert Model → Entity (Domain Model)
 @freezed
 class GithubUserModel with _$GithubUserModel {
   const factory GithubUserModel({
@@ -14,9 +15,11 @@ class GithubUserModel with _$GithubUserModel {
   }) = _GithubUserModel;
 
   factory GithubUserModel.fromJson(Map<String, dynamic> json) =>
-      _$GithubUserModelFromJson(json);
+      _$GithubUserModelFromJson(json); //Tạo model từ JSON (Dio trả về)
 }
 
+//Parse JSON → Model
+//Model → Entity (Domain DTO)
 extension GithubUserModelMapper on GithubUserModel {
   GithubUser toEntity() => GithubUser(
         id: id,
@@ -24,7 +27,7 @@ extension GithubUserModelMapper on GithubUserModel {
         avatarUrl: avatarUrl,
         htmlUrl: htmlUrl,
       );
-
+//Mapper Entity → Model
   static GithubUserModel fromEntity(GithubUser user) =>
       GithubUserModel(
         id: user.id,
